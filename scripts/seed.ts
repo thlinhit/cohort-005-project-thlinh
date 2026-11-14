@@ -11,7 +11,7 @@ import {
   CourseStatus,
   LessonProgressStatus,
   QuestionType,
-  TeamMemberRole,
+  TeamAdminRole,
 } from "../app/db/schema";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -73,8 +73,8 @@ async function seed() {
     DROP TABLE IF EXISTS quiz_questions;
     DROP TABLE IF EXISTS quizzes;
     DROP TABLE IF EXISTS lesson_progress;
-    DROP TABLE IF EXISTS coupons;
-    DROP TABLE IF EXISTS team_members;
+    DROP TABLE IF EXISTS seats;
+    DROP TABLE IF EXISTS team_admins;
     DROP TABLE IF EXISTS teams;
     DROP TABLE IF EXISTS refunds;
     DROP TABLE IF EXISTS purchases;
@@ -109,14 +109,14 @@ async function seed() {
   // cohort generated further down, which supplies volume. Anything that picks a
   // student out of a list does it by email, never by array position — see
   // studentByEmail — so appending or inserting students never silently
-  // re-points a coupon redemption at someone else.
+  // re-points a seat claim at someone else.
 
   const [admin] = db
     .insert(schema.users)
     .values({
       name: "Alex Rivera",
       email: "alex.rivera@ralph.dev",
-      role: UserRole.Admin,
+      role: UserRole.PlatformAdmin,
       avatarUrl: "https://api.dicebear.com/9.x/avataaars/svg?seed=alex",
       createdAt: daysAgo(120),
     })
@@ -293,7 +293,7 @@ async function seed() {
     duration: number;
     videoUrl?: string;
     githubRepoUrl?: string;
-    content?: string;
+    body?: string;
   };
 
   type ModuleSpec = { title: string; lessons: LessonSpec[] };
@@ -327,7 +327,7 @@ async function seed() {
           .values({
             moduleId: mod.id,
             title: lessonData.title,
-            content: lessonData.content ?? null,
+            body: lessonData.body ?? null,
             videoUrl: lessonData.videoUrl ?? null,
             githubRepoUrl: lessonData.githubRepoUrl ?? null,
             position: li + 1,
@@ -404,7 +404,7 @@ By the end of this course, you'll understand why TypeScript has become the defau
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
           githubRepoUrl:
             "https://github.com/total-typescript/ts-intro-what-is-ts",
-          content: `## What is TypeScript?
+          body: `## What is TypeScript?
 
 TypeScript is a typed superset of JavaScript that compiles to plain JavaScript. It adds optional static typing and class-based object-oriented programming to the language.
 
@@ -419,7 +419,7 @@ TypeScript is a typed superset of JavaScript that compiles to plain JavaScript. 
           title: "Installing and Configuring TypeScript",
           duration: 12,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Setting Up TypeScript
+          body: `## Setting Up TypeScript
 
 Let's get TypeScript installed and configured in your development environment.
 
@@ -440,7 +440,7 @@ The \`tsconfig.json\` file configures the TypeScript compiler options for your p
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
           githubRepoUrl:
             "https://github.com/total-typescript/ts-intro-first-program",
-          content: `## Hello, TypeScript!
+          body: `## Hello, TypeScript!
 
 Let's write our first TypeScript program and see the compilation process in action.
 
@@ -461,7 +461,7 @@ console.log(greet('World'));
           title: "Primitive Types",
           duration: 10,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Primitive Types
+          body: `## Primitive Types
 
 TypeScript supports the same primitive types as JavaScript, plus a few extras.
 
@@ -475,7 +475,7 @@ TypeScript supports the same primitive types as JavaScript, plus a few extras.
           title: "Arrays and Tuples",
           duration: 12,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Arrays and Tuples
+          body: `## Arrays and Tuples
 
 Learn how to type arrays and fixed-length tuples in TypeScript.
 
@@ -488,7 +488,7 @@ const pair: [string, number] = ['age', 25];
           title: "Type Aliases and Interfaces",
           duration: 18,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Type Aliases vs Interfaces
+          body: `## Type Aliases vs Interfaces
 
 Both type aliases and interfaces let you define custom types, but they have subtle differences.
 
@@ -514,7 +514,7 @@ interface User {
           title: "Union and Intersection Types",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Union and Intersection Types
+          body: `## Union and Intersection Types
 
 Combine types in powerful ways using unions (\`|\`) and intersections (\`&\`).
 
@@ -534,7 +534,7 @@ type Person = Named & Aged;
           title: "Function Types",
           duration: 11,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Typing Functions
+          body: `## Typing Functions
 
 TypeScript lets you type function parameters, return values, and even the function itself.
 
@@ -552,7 +552,7 @@ const multiply: (a: number, b: number) => number = (a, b) => a * b;
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
           githubRepoUrl:
             "https://github.com/total-typescript/ts-generics-basics",
-          content: `## Introduction to Generics
+          body: `## Introduction to Generics
 
 Generics let you write reusable code that works with multiple types while maintaining type safety.
 
@@ -569,7 +569,7 @@ const num = identity(42); // number
           title: "Generic Constraints",
           duration: 16,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Constraining Generics
+          body: `## Constraining Generics
 
 Use \`extends\` to limit what types a generic can accept.
 
@@ -587,7 +587,7 @@ getLength([1, 2, 3]); // OK
           title: "Utility Types",
           duration: 15,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Built-in Utility Types
+          body: `## Built-in Utility Types
 
 TypeScript provides several utility types for common type transformations.
 
@@ -606,7 +606,7 @@ TypeScript provides several utility types for common type transformations.
           title: "Discriminated Unions",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Discriminated Unions
+          body: `## Discriminated Unions
 
 A pattern that combines union types with literal types to create type-safe tagged unions.
 
@@ -627,7 +627,7 @@ function area(shape: Shape): number {
           title: "Type Guards and Narrowing",
           duration: 13,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Type Guards
+          body: `## Type Guards
 
 Type guards are expressions that narrow a type within a conditional block.
 
@@ -649,7 +649,7 @@ function process(value: string | number) {
           title: "Mapped Types",
           duration: 17,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Mapped Types
+          body: `## Mapped Types
 
 Create new types by transforming each property of an existing type.
 
@@ -667,7 +667,7 @@ type Optional<T> = {
           title: "Conditional Types",
           duration: 19,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Conditional Types
+          body: `## Conditional Types
 
 Types that depend on a condition, similar to ternary expressions but at the type level.
 
@@ -682,7 +682,7 @@ type B = IsString<42>; // false
           title: "Template Literal Types",
           duration: 10,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Template Literal Types
+          body: `## Template Literal Types
 
 Construct string types using template literal syntax.
 
@@ -703,7 +703,7 @@ type CSSProperty = \\\`color-\\\${Color}\\\`;
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
           githubRepoUrl:
             "https://github.com/total-typescript/ts-react-examples",
-          content: `## TypeScript + React
+          body: `## TypeScript + React
 
 Learn how to use TypeScript effectively in React applications.
 
@@ -723,7 +723,7 @@ function Button({ label, onClick, variant = 'primary' }: ButtonProps) {
           title: "Error Handling Patterns",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          content: `## Error Handling in TypeScript
+          body: `## Error Handling in TypeScript
 
 Strategies for handling errors in a type-safe way.
 
@@ -741,7 +741,7 @@ function divide(a: number, b: number): Result<number> {
         {
           title: "Course Wrap-Up and Next Steps",
           duration: 8,
-          content: `## Congratulations!
+          body: `## Congratulations!
 
 You've completed the Introduction to TypeScript course. Here's what we covered:
 
@@ -827,7 +827,7 @@ Every lesson is focused and practical. No 45-minute lectures where 40 minutes ar
           title: "What is a REST API?",
           duration: 10,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## REST API Fundamentals
+          body: `## REST API Fundamentals
 
 REST (Representational State Transfer) is an architectural style for designing networked applications. RESTful APIs use HTTP methods to perform CRUD operations on resources.
 
@@ -844,7 +844,7 @@ REST (Representational State Transfer) is an architectural style for designing n
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
           githubRepoUrl:
             "https://github.com/total-typescript/rest-api-express-setup",
-          content: `## Express.js Setup
+          body: `## Express.js Setup
 
 Express is the most popular Node.js web framework for building APIs.
 
@@ -865,7 +865,7 @@ app.listen(3000, () => console.log('Server running on port 3000'));
           title: "HTTP Methods and Status Codes",
           duration: 12,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## HTTP Methods
+          body: `## HTTP Methods
 
 - **GET** — Retrieve resources (200 OK)
 - **POST** — Create resources (201 Created)
@@ -882,7 +882,7 @@ app.listen(3000, () => console.log('Server running on port 3000'));
           title: "Request and Response Objects",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Working with Request & Response
+          body: `## Working with Request & Response
 
 Express provides rich request and response objects for handling HTTP communication.
 
@@ -903,7 +903,7 @@ app.post('/api/users', (req, res) => {
           title: "Express Router",
           duration: 13,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Organizing Routes
+          body: `## Organizing Routes
 
 Use Express Router to organize your API endpoints into logical groups.
 
@@ -922,7 +922,7 @@ app.use('/api/users', userRouter);
           title: "Custom Middleware",
           duration: 16,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Middleware in Express
+          body: `## Middleware in Express
 
 Middleware functions have access to the request, response, and next function in the request-response cycle.
 
@@ -943,7 +943,7 @@ function authenticate(req, res, next) {
           title: "Error Handling Middleware",
           duration: 11,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Centralized Error Handling
+          body: `## Centralized Error Handling
 
 Express supports error-handling middleware with four parameters.
 
@@ -960,7 +960,7 @@ app.use((err, req, res, next) => {
           title: "Validation with Zod",
           duration: 18,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Request Validation
+          body: `## Request Validation
 
 Use Zod to validate request bodies, query parameters, and URL parameters.
 
@@ -989,7 +989,7 @@ app.post('/api/users', (req, res) => {
           title: "Connecting to a Database",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Database Setup
+          body: `## Database Setup
 
 Learn how to connect your API to a database using an ORM.
 
@@ -1007,7 +1007,7 @@ const db = drizzle(sqlite);
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
           githubRepoUrl:
             "https://github.com/total-typescript/rest-api-crud-operations",
-          content: `## Building CRUD Endpoints
+          body: `## Building CRUD Endpoints
 
 Implement Create, Read, Update, Delete operations for your API resources.
 
@@ -1030,7 +1030,7 @@ app.get('/api/posts/:id', async (req, res) => {
           title: "Pagination and Filtering",
           duration: 15,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Pagination
+          body: `## Pagination
 
 Implement cursor-based and offset-based pagination for list endpoints.
 
@@ -1050,7 +1050,7 @@ app.get('/api/posts', async (req, res) => {
           title: "Transactions",
           duration: 12,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Database Transactions
+          body: `## Database Transactions
 
 Use transactions to ensure data consistency when multiple operations must succeed or fail together.
 
@@ -1072,7 +1072,7 @@ await db.transaction(async (tx) => {
           title: "JWT Authentication",
           duration: 22,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## JSON Web Tokens
+          body: `## JSON Web Tokens
 
 Implement JWT-based authentication for your API.
 
@@ -1092,7 +1092,7 @@ app.post('/api/login', async (req, res) => {
           title: "Rate Limiting",
           duration: 10,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Rate Limiting
+          body: `## Rate Limiting
 
 Protect your API from abuse by limiting the number of requests per client.
 
@@ -1111,7 +1111,7 @@ app.use('/api/', limiter);
           title: "CORS and Security Headers",
           duration: 11,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## CORS Configuration
+          body: `## CORS Configuration
 
 Configure Cross-Origin Resource Sharing for your API.
 
@@ -1132,7 +1132,7 @@ app.use(helmet());
           title: "Unit Testing API Routes",
           duration: 18,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Testing with Vitest and Supertest
+          body: `## Testing with Vitest and Supertest
 
 Write tests for your API endpoints using Vitest and Supertest.
 
@@ -1154,7 +1154,7 @@ describe('GET /api/users', () => {
           title: "Integration Testing",
           duration: 16,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Integration Tests
+          body: `## Integration Tests
 
 Test complete request flows including database interactions.
 
@@ -1177,7 +1177,7 @@ describe('User CRUD', () => {
           title: "Environment Variables and Config",
           duration: 9,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Configuration Management
+          body: `## Configuration Management
 
 Manage environment-specific settings with environment variables.
 
@@ -1193,7 +1193,7 @@ const config = {
           title: "Deploying Your API",
           duration: 14,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          content: `## Deployment
+          body: `## Deployment
 
 Deploy your Node.js API to production. We'll cover various hosting options and best practices.
 
@@ -1208,7 +1208,7 @@ Deploy your Node.js API to production. We'll cover various hosting options and b
         {
           title: "Course Wrap-Up",
           duration: 7,
-          content: `## Congratulations!
+          body: `## Congratulations!
 
 You've completed the Building REST APIs course. You now have the skills to build, test, and deploy production-ready APIs with Node.js.
 
@@ -1278,21 +1278,21 @@ Frontend developers who have built components before and watched the collection 
             title: "What a Design System Is For",
             duration: 9,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## What a Design System Is For\n\nA design system is a shared vocabulary, not a component folder. This lesson covers what belongs in one and — more usefully — what does not.",
           },
           {
             title: "Design Tokens",
             duration: 14,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Design Tokens\n\nColour, spacing, radius and type scales expressed as named values, so a change lands in one place instead of two hundred.",
           },
           {
             title: "Spacing and Type Scales",
             duration: 12,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Scales\n\nWhy a constrained scale produces better layouts than free choice, and how to pick one you can live with.",
           },
         ],
@@ -1306,21 +1306,21 @@ Frontend developers who have built components before and watched the collection 
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
             githubRepoUrl:
               "https://github.com/total-typescript/design-system-variants",
-            content:
+            body:
               "## Variants\n\nA variant API that composes beats one that enumerates. We build a button whose options multiply without the source doing the same.",
           },
           {
             title: "Accessible Primitives",
             duration: 16,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Accessible Primitives\n\nFocus management, keyboard interaction and ARIA — handled once in the primitive rather than in every consumer.",
           },
           {
             title: "Theming and Dark Mode",
             duration: 15,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Theming\n\nOne set of components, several themes, no forks. CSS custom properties do most of the work.",
           },
         ],
@@ -1332,20 +1332,20 @@ Frontend developers who have built components before and watched the collection 
             title: "Documentation That Gets Read",
             duration: 11,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Documentation\n\nDocs next to the code, examples that run, and the one page every new team member actually opens.",
           },
           {
             title: "Versioning and Breaking Changes",
             duration: 13,
             videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-            content:
+            body:
               "## Breaking Changes\n\nHow to ship a breaking change to twelve teams without becoming the reason they fork.",
           },
           {
             title: "Course Wrap-Up",
             duration: 6,
-            content:
+            body:
               "## Wrap-Up\n\nYou have a token layer, a component API you can defend, and a story for how changes land. Go and delete some CSS.",
           },
         ],
@@ -1360,7 +1360,7 @@ Frontend developers who have built components before and watched the collection 
 
   // ─── Course 4: Practical Data Visualisation (Marcus Johnson) ───
   // Published but has never sold. The analytics views must render a course with
-  // zero revenue, zero enrolments and zero progress without dividing by it.
+  // zero revenue, zero enrollments and zero progress without dividing by it.
 
   const [course4] = db
     .insert(schema.courses)
@@ -1404,21 +1404,21 @@ Developers and analysts who produce charts for other people to act on.`,
             title: "Encodings and What They Say",
             duration: 12,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Encodings\n\nPosition beats length beats angle beats area. Pick the strongest encoding the question allows.",
           },
           {
             title: "Time Series Done Right",
             duration: 14,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Time Series\n\nRanges, resampling, and why a 30-day and a 90-day view of the same data should not look identical.",
           },
           {
             title: "Distributions",
             duration: 13,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Distributions\n\nHistograms, box plots, and the mean hiding a bimodal population.",
           },
         ],
@@ -1430,20 +1430,20 @@ Developers and analysts who produce charts for other people to act on.`,
             title: "Scales and Axes",
             duration: 11,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Scales\n\nWhen truncating an axis is honest, and when it is a lie with a legend.",
           },
           {
             title: "Colour and Accessibility",
             duration: 15,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Colour\n\nSequential, diverging and categorical palettes, checked against the three common forms of colour blindness.",
           },
           {
             title: "Annotation and Narrative",
             duration: 10,
-            content:
+            body:
               "## Annotation\n\nThe label on the spike is doing more work than the spike.",
           },
         ],
@@ -1502,20 +1502,20 @@ This course is still in draft while the cluster examples are rewritten against t
             title: "Why Containers",
             duration: 8,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Why Containers\n\nThe problem containers solve, stated precisely enough to know when you do not have it.",
           },
           {
             title: "Writing a Dockerfile",
             duration: 17,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## Dockerfiles\n\nLayer caching, multi-stage builds, and getting the image under a hundred megabytes.",
           },
           {
             title: "Images and Registries",
             duration: 12,
-            content:
+            body:
               "## Registries\n\nTagging, pushing, and why `latest` is not a version.",
           },
         ],
@@ -1527,13 +1527,13 @@ This course is still in draft while the cluster examples are rewritten against t
             title: "Pods, Deployments, Services",
             duration: 19,
             videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-            content:
+            body:
               "## The Core Objects\n\nThree objects explain most of Kubernetes. This lesson is those three.",
           },
           {
             title: "Config and Secrets",
             duration: 14,
-            content:
+            body:
               "## Config\n\nConfigMaps, Secrets, and keeping environment differences out of the image.",
           },
         ],
@@ -2176,7 +2176,7 @@ This course is still in draft while the cluster examples are rewritten against t
   }
 
   // One watch session: `play`, a `progress` heartbeat every 10 seconds of
-  // playback, then `ended` if they reached the end or `pause` if they stopped
+  // playback, then `ended` if they got to the end or `pause` if they stopped
   // short. Clock time advances with playback position, as it does in real life.
   function addWatchSession(
     userId: number,
@@ -2200,11 +2200,11 @@ This course is still in draft while the cluster examples are rewritten against t
       addWatchEvent(userId, lessonId, "progress", pos, hoursAgoAt(pos));
     }
 
-    const reachedEnd = toSeconds >= videoDurationSeconds;
+    const gotToEnd = toSeconds >= videoDurationSeconds;
     addWatchEvent(
       userId,
       lessonId,
-      reachedEnd ? "ended" : "pause",
+      gotToEnd ? "ended" : "pause",
       toSeconds,
       hoursAgoAt(toSeconds)
     );
@@ -2278,8 +2278,8 @@ This course is still in draft while the cluster examples are rewritten against t
 
   console.log(`Created ${countRows(schema.purchases)} individual purchases.`);
 
-  // ─── Teams, Team Members, and Coupons ───
-  // Bossy McBossface bought 5 team seats for course 2; Olivia and Liam redeemed coupons
+  // ─── Teams, Team Admins, and Seats ───
+  // Bossy McBossface bought 5 team seats for course 2; Olivia and Liam claimed seats
 
   const [team1] = db
     .insert(schema.teams)
@@ -2287,11 +2287,11 @@ This course is still in draft while the cluster examples are rewritten against t
     .returning()
     .all();
 
-  db.insert(schema.teamMembers)
+  db.insert(schema.teamAdmins)
     .values({
       teamId: team1.id,
       userId: bossy.id,
-      role: TeamMemberRole.Admin,
+      role: TeamAdminRole.TeamAdmin,
       createdAt: daysAgo(30),
     })
     .run();
@@ -2309,8 +2309,8 @@ This course is still in draft while the cluster examples are rewritten against t
     .returning()
     .all();
 
-  // Generate 5 coupons for the team purchase
-  const couponCodes = [
+  // Generate 5 seats for the team purchase
+  const seatCodes = [
     "TEAM-NODEJS-A1B2C3",
     "TEAM-NODEJS-D4E5F6",
     "TEAM-NODEJS-G7H8I9",
@@ -2318,10 +2318,10 @@ This course is still in draft while the cluster examples are rewritten against t
     "TEAM-NODEJS-M3N4O5",
   ];
 
-  const seededCoupons = db
-    .insert(schema.coupons)
+  const seededSeats = db
+    .insert(schema.seats)
     .values(
-      couponCodes.map((code) => ({
+      seatCodes.map((code) => ({
         teamId: team1.id,
         courseId: course2.id,
         code,
@@ -2332,28 +2332,28 @@ This course is still in draft while the cluster examples are rewritten against t
     .returning()
     .all();
 
-  // Redeem 2 of the 5 coupons. Redeemers are named by email, not by position in
+  // Claim 2 of the 5 seats. Claimers are named by email, not by position in
   // the students array — position would silently re-point these redemptions at
   // different people the moment a student is inserted rather than appended.
-  // Both already have an enrolment for course 2 from the enrolments section.
-  db.update(schema.coupons)
+  // Both already have an enrollment for course 2 from the enrollments section.
+  db.update(schema.seats)
     .set({
-      redeemedByUserId: studentByEmail("olivia.martinez@student.dev").id,
-      redeemedAt: daysAgo(30),
+      claimedByUserId: studentByEmail("olivia.martinez@student.dev").id,
+      claimedAt: daysAgo(30),
     })
-    .where(eq(schema.coupons.id, seededCoupons[0].id))
+    .where(eq(schema.seats.id, seededSeats[0].id))
     .run();
 
-  db.update(schema.coupons)
+  db.update(schema.seats)
     .set({
-      redeemedByUserId: studentByEmail("liam.thompson@student.dev").id,
-      redeemedAt: daysAgo(25),
+      claimedByUserId: studentByEmail("liam.thompson@student.dev").id,
+      claimedAt: daysAgo(25),
     })
-    .where(eq(schema.coupons.id, seededCoupons[1].id))
+    .where(eq(schema.seats.id, seededSeats[1].id))
     .run();
 
   console.log(
-    `Created 1 team with Bossy McBossface as admin, 1 team purchase, and ${seededCoupons.length} coupons (${countRows(schema.coupons, isNotNull(schema.coupons.redeemedByUserId))} redeemed, ${countRows(schema.coupons, isNull(schema.coupons.redeemedByUserId))} available).`
+    `Created 1 team with Bossy McBossface as admin, 1 team purchase, and ${seededSeats.length} seats (${countRows(schema.seats, isNotNull(schema.seats.claimedByUserId))} claimed, ${countRows(schema.seats, isNull(schema.seats.claimedByUserId))} unclaimed).`
   );
 
   // ─── Generated history ───
@@ -2361,7 +2361,7 @@ This course is still in draft while the cluster examples are rewritten against t
   // Everything above is hand-written narrative data: a handful of students whose
   // comments, quiz attempts and ratings are written one by one. Everything below
   // is the bulk history the analytics work is evaluated against — roughly twelve
-  // months of purchases, enrolments, progress and watch events for the cohort.
+  // months of purchases, enrollments, progress and watch events for the cohort.
   //
   // Generated from a fixed PRNG seed, so every run produces the same database and
   // a number read off the dashboard can be checked against a number computed
@@ -2399,11 +2399,11 @@ This course is still in draft while the cluster examples are rewritten against t
   //     index 3  "Variants and Composition"        — first cliff
   //     index 6  "Documentation That Gets Read"    — second cliff
   //
-  // Assert against the lessons, not against a drop-off percentage. Each enrolment
+  // Assert against the lessons, not against a drop-off percentage. Each enrollment
   // rolls: 12% never start, 38% stop at the first cliff, 22% at the second, 13%
   // finish, and the remaining 15% stop at a uniformly random lesson — so the
   // cliffs stand out against a noisy background rather than being the only
-  // stopping points. Those are per-enrolment odds, not the share of students who
+  // stopping points. Those are per-enrollment odds, not the share of students who
   // reach a given lesson: because students who stop at the first cliff never
   // reach the second, the observed drop-off at each cliff is much steeper than
   // its roll.
@@ -2562,7 +2562,7 @@ This course is still in draft while the cluster examples are rewritten against t
       rows++;
 
       // The lesson they stopped on is left half-watched: a session that never
-      // reached the end, heartbeats and all.
+      // got to the end, heartbeats and all.
       if (li === stopIndex) {
         const duration = lessonDurationSeconds.get(lessonIds[li]) ?? 600;
         addWatchSession(
@@ -2603,13 +2603,13 @@ This course is still in draft while the cluster examples are rewritten against t
   }
 
   console.log(
-    `Created ${generatedPurchases} generated purchases, ${generatedEnrollments} enrolments and ${generatedProgressRows} lesson progress rows.`
+    `Created ${generatedPurchases} generated purchases, ${generatedEnrollments} enrollments and ${generatedProgressRows} lesson progress rows.`
   );
 
   // ─── Further team purchases ───
   // Two more seat purchases so team revenue is not a single row, in mixed
   // redemption states: one team most of the way through its seats, one that has
-  // bought and redeemed nothing yet.
+  // bought and claimed nothing yet.
 
   function createTeamPurchase(
     adminEmail: string,
@@ -2617,7 +2617,7 @@ This course is still in draft while the cluster examples are rewritten against t
     seats: number,
     codePrefix: string,
     purchasedDaysAgo: number,
-    redeemerEmails: string[]
+    claimerEmails: string[]
   ) {
     const teamAdmin = studentByEmail(adminEmail);
 
@@ -2627,11 +2627,11 @@ This course is still in draft while the cluster examples are rewritten against t
       .returning()
       .all();
 
-    db.insert(schema.teamMembers)
+    db.insert(schema.teamAdmins)
       .values({
         teamId: team.id,
         userId: teamAdmin.id,
-        role: TeamMemberRole.Admin,
+        role: TeamAdminRole.TeamAdmin,
         createdAt: daysAgo(purchasedDaysAgo),
       })
       .run();
@@ -2648,8 +2648,8 @@ This course is still in draft while the cluster examples are rewritten against t
       .returning()
       .all();
 
-    const teamCoupons = db
-      .insert(schema.coupons)
+    const teamSeats = db
+      .insert(schema.seats)
       .values(
         Array.from({ length: seats }, (_, i) => ({
           teamId: team.id,
@@ -2662,41 +2662,32 @@ This course is still in draft while the cluster examples are rewritten against t
       .returning()
       .all();
 
-    // Redeemers named by email, for the reason given at the first team above.
-    redeemerEmails.forEach((email, i) => {
-      const redeemer = studentByEmail(email);
-      const redeemedDaysAgo = Math.max(0, purchasedDaysAgo - (i + 1) * 2);
+    // Claimers named by email, for the reason given at the first team above.
+    claimerEmails.forEach((email, i) => {
+      const claimer = studentByEmail(email);
+      const claimedDaysAgo = Math.max(0, purchasedDaysAgo - (i + 1) * 2);
 
-      db.update(schema.coupons)
+      db.update(schema.seats)
         .set({
-          redeemedByUserId: redeemer.id,
-          redeemedAt: daysAgo(redeemedDaysAgo),
+          claimedByUserId: claimer.id,
+          claimedAt: daysAgo(claimedDaysAgo),
         })
-        .where(eq(schema.coupons.id, teamCoupons[i].id))
-        .run();
-
-      db.insert(schema.teamMembers)
-        .values({
-          teamId: team.id,
-          userId: redeemer.id,
-          role: TeamMemberRole.Member,
-          createdAt: daysAgo(redeemedDaysAgo),
-        })
+        .where(eq(schema.seats.id, teamSeats[i].id))
         .run();
 
       db.insert(schema.enrollments)
         .values({
-          userId: redeemer.id,
+          userId: claimer.id,
           courseId: course.id,
-          enrolledAt: daysAgo(redeemedDaysAgo),
+          enrolledAt: daysAgo(claimedDaysAgo),
         })
         .run();
     });
 
-    return { team, purchase, coupons: teamCoupons };
+    return { team, purchase, seats: teamSeats };
   }
 
-  // Eight seats on TypeScript, six redeemed.
+  // Eight seats on TypeScript, six claimed.
   createTeamPurchase(
     "ava.nakamura@student.dev",
     course1,
@@ -2713,7 +2704,7 @@ This course is still in draft while the cluster examples are rewritten against t
     ]
   );
 
-  // Four seats on Design Systems, bought during launch week, none redeemed yet.
+  // Four seats on Design Systems, bought during launch week, none claimed yet.
   createTeamPurchase(
     "marta.novak@student.dev",
     course3,
@@ -2750,7 +2741,7 @@ This course is still in draft while the cluster examples are rewritten against t
 
   console.log("\n✓ Seed complete!");
   console.log(
-    `  Users: ${countRows(schema.users)} (${countRows(schema.users, eq(schema.users.role, UserRole.Admin))} admin, ${countRows(schema.users, eq(schema.users.role, UserRole.Instructor))} instructors, ${countRows(schema.users, eq(schema.users.role, UserRole.Student))} students)`
+    `  Users: ${countRows(schema.users)} (${countRows(schema.users, eq(schema.users.role, UserRole.PlatformAdmin))} admin, ${countRows(schema.users, eq(schema.users.role, UserRole.Instructor))} instructors, ${countRows(schema.users, eq(schema.users.role, UserRole.Student))} students)`
   );
   console.log(`  Categories: ${countRows(schema.categories)}`);
   console.log(
@@ -2775,7 +2766,7 @@ This course is still in draft while the cluster examples are rewritten against t
     `  Purchases: ${countRows(schema.purchases)} (${countRows(schema.purchases, gte(schema.purchases.createdAt, sevenDaysAgo))} in the last 7 days), spanning ${historyDays} days`
   );
   console.log(
-    `  Teams: ${countRows(schema.teams)}, coupons: ${countRows(schema.coupons)} (${countRows(schema.coupons, isNotNull(schema.coupons.redeemedByUserId))} redeemed)`
+    `  Teams: ${countRows(schema.teams)}, seats: ${countRows(schema.seats)} (${countRows(schema.seats, isNotNull(schema.seats.claimedByUserId))} claimed)`
   );
 }
 

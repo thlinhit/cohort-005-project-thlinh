@@ -11,7 +11,7 @@ import {
 export enum UserRole {
   Student = "student",
   Instructor = "instructor",
-  Admin = "admin",
+  PlatformAdmin = "admin",
 }
 
 export enum CourseStatus {
@@ -37,9 +37,8 @@ export enum RefundStatus {
   Declined = "declined",
 }
 
-export enum TeamMemberRole {
-  Admin = "admin",
-  Member = "member",
+export enum TeamAdminRole {
+  TeamAdmin = "admin",
 }
 
 // ─── Tables ───
@@ -108,7 +107,7 @@ export const lessons = sqliteTable("lessons", {
     .notNull()
     .references(() => modules.id),
   title: text("title").notNull(),
-  content: text("content"),
+  body: text("body"),
   videoUrl: text("video_url"),
   githubRepoUrl: text("github_repo_url"),
   position: integer("position").notNull(),
@@ -240,7 +239,7 @@ export const refunds = sqliteTable(
       .notNull()
       .$type<RefundStatus>()
       .default(RefundStatus.Requested),
-    // The learner's own words, in the box on the course page.
+    // The student's own words, in the box on the course page.
     reason: text("reason").notNull(),
     // Null until someone approves — a declined request refunds nothing.
     amountRefunded: integer("amount_refunded"),
@@ -260,7 +259,7 @@ export const teams = sqliteTable("teams", {
     .$defaultFn(() => new Date().toISOString()),
 });
 
-export const teamMembers = sqliteTable("team_members", {
+export const teamAdmins = sqliteTable("team_admins", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id")
     .notNull()
@@ -268,13 +267,13 @@ export const teamMembers = sqliteTable("team_members", {
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),
-  role: text("role").notNull().$type<TeamMemberRole>(),
+  role: text("role").notNull().$type<TeamAdminRole>(),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
 
-export const coupons = sqliteTable("coupons", {
+export const seats = sqliteTable("seats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id")
     .notNull()
@@ -286,8 +285,8 @@ export const coupons = sqliteTable("coupons", {
   purchaseId: integer("purchase_id")
     .notNull()
     .references(() => purchases.id),
-  redeemedByUserId: integer("redeemed_by_user_id").references(() => users.id),
-  redeemedAt: text("redeemed_at"),
+  claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
+  claimedAt: text("claimed_at"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

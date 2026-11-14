@@ -153,7 +153,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const currentUser = getUserById(currentUserId);
 
-  if (!currentUser || currentUser.role !== UserRole.Admin) {
+  if (!currentUser || currentUser.role !== UserRole.PlatformAdmin) {
     throw data("Only admins can access this page.", {
       status: 403,
     });
@@ -168,11 +168,11 @@ export async function action({ request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in.", { status: 401 });
+    throw data("You must be signed in.", { status: 401 });
   }
 
   const currentUser = getUserById(currentUserId);
-  if (!currentUser || currentUser.role !== UserRole.Admin) {
+  if (!currentUser || currentUser.role !== UserRole.PlatformAdmin) {
     throw data("Only admins can manage categories.", { status: 403 });
   }
 
@@ -611,7 +611,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message = typeof error.data === "string" ? error.data : "Please select a user from the DevUI panel.";
     } else if (error.status === 403) {
       title = "Access denied";

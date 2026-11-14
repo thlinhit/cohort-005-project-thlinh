@@ -23,7 +23,7 @@ import { UserAvatar } from "~/components/user-avatar";
 import { getCurrentUserId } from "~/lib/session";
 import { formatPrice } from "~/lib/utils";
 import { resolveCountry } from "~/lib/country.server";
-import { calculatePppPrice } from "~/lib/ppp";
+import { calculateEffectivePrice } from "~/lib/ppp";
 import { StarRating } from "~/components/star-rating";
 
 function buildCourseQuery(
@@ -313,8 +313,8 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 
   const coursesWithLessonCount = courses.map((course) => {
     const userProgress = progressMap.get(course.id);
-    const pppPrice = course.pppEnabled
-      ? calculatePppPrice(course.price, country)
+    const effectivePrice = course.pppEnabled
+      ? calculateEffectivePrice(course.price, country)
       : course.price;
     const rating = ratingSummaries.get(course.id);
     return {
@@ -322,7 +322,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
       lessonCount: getLessonCountForCourse(course.id),
       progress: userProgress?.progress ?? null,
       completedLessons: userProgress?.completedLessons ?? null,
-      pppPrice,
+      effectivePrice,
       ratingAverage: rating?.average ?? null,
       ratingCount: rating?.count ?? 0,
     };
@@ -501,12 +501,12 @@ export default function CourseCatalog({ loaderData }: Route.ComponentProps) {
                     {course.instructorName}
                   </span>
                   <span className="font-semibold text-foreground">
-                    {course.pppPrice < course.price ? (
+                    {course.effectivePrice < course.price ? (
                       <span className="flex items-center gap-1.5">
                         <span className="text-xs line-through text-muted-foreground font-normal">
                           {formatPrice(course.price)}
                         </span>
-                        {formatPrice(course.pppPrice)}
+                        {formatPrice(course.effectivePrice)}
                       </span>
                     ) : (
                       formatPrice(course.price)

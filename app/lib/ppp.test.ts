@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getTierForCountry,
   getDiscountForCountry,
-  calculatePppPrice,
+  calculateEffectivePrice,
   getCountryTierInfo,
   checkPppAccess,
 } from "./ppp";
@@ -68,29 +68,29 @@ describe("PPP Config", () => {
 
   // ─── Price Calculation ───
 
-  describe("calculatePppPrice", () => {
+  describe("calculateEffectivePrice", () => {
     it("returns full price for tier 1", () => {
-      expect(calculatePppPrice(4999, "US")).toBe(4999);
+      expect(calculateEffectivePrice(4999, "US")).toBe(4999);
     });
 
     it("applies 30% discount for tier 2", () => {
-      expect(calculatePppPrice(4999, "BR")).toBe(3499);
+      expect(calculateEffectivePrice(4999, "BR")).toBe(3499);
     });
 
     it("applies 50% discount for tier 3", () => {
-      expect(calculatePppPrice(4999, "IN")).toBe(2500);
+      expect(calculateEffectivePrice(4999, "IN")).toBe(2500);
     });
 
     it("applies 70% discount for tier 4", () => {
-      expect(calculatePppPrice(4999, "NG")).toBe(1500);
+      expect(calculateEffectivePrice(4999, "NG")).toBe(1500);
     });
 
     it("returns 0 for free courses", () => {
-      expect(calculatePppPrice(0, "IN")).toBe(0);
+      expect(calculateEffectivePrice(0, "IN")).toBe(0);
     });
 
     it("returns full price for null country", () => {
-      expect(calculatePppPrice(4999, null)).toBe(4999);
+      expect(calculateEffectivePrice(4999, null)).toBe(4999);
     });
   });
 
@@ -111,76 +111,76 @@ describe("PPP Config", () => {
   // ─── PPP Access Guard ───
 
   describe("checkPppAccess", () => {
-    // --- Free courses are never blocked ---
+    // --- Free courses are never locked ---
 
     it("allows access to free courses regardless of country", () => {
       const result = checkPppAccess(0, true, "IN", "US");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
-    // --- PPP-disabled courses are never blocked ---
+    // --- PPP-disabled courses are never locked ---
 
     it("allows access when PPP is disabled on course", () => {
       const result = checkPppAccess(4999, false, "IN", "US");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     // --- No purchase country recorded ---
 
     it("allows access when purchase country is null", () => {
       const result = checkPppAccess(4999, true, null, "US");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
-    // --- Tier 1 (full price) purchases are never blocked ---
+    // --- Tier 1 (full price) purchases are never locked ---
 
     it("allows Tier 1 purchase from any country", () => {
       const result = checkPppAccess(4999, true, "US", "IN");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     it("allows Tier 1 purchase when current country is null", () => {
       const result = checkPppAccess(4999, true, "US", null);
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     // --- Discounted purchase — matching country ---
 
     it("allows Tier 2 purchase when country matches", () => {
       const result = checkPppAccess(4999, true, "PL", "PL");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     it("allows Tier 3 purchase when country matches", () => {
       const result = checkPppAccess(4999, true, "IN", "IN");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     it("allows Tier 4 purchase when country matches", () => {
       const result = checkPppAccess(4999, true, "NG", "NG");
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     // --- Discounted purchase — mismatching country ---
 
     it("blocks Tier 2 purchase when accessed from different country", () => {
       const result = checkPppAccess(4999, true, "PL", "DE");
-      expect(result.blocked).toBe(true);
-      expect(result.blockedCountry).toBe("DE");
+      expect(result.locked).toBe(true);
+      expect(result.lockedCountry).toBe("DE");
       expect(result.purchaseCountry).toBe("PL");
     });
 
     it("blocks Tier 3 purchase when accessed from different country", () => {
       const result = checkPppAccess(4999, true, "IN", "US");
-      expect(result.blocked).toBe(true);
-      expect(result.blockedCountry).toBe("US");
+      expect(result.locked).toBe(true);
+      expect(result.lockedCountry).toBe("US");
       expect(result.purchaseCountry).toBe("IN");
     });
 
     it("blocks Tier 4 purchase when accessed from different country", () => {
       const result = checkPppAccess(4999, true, "NG", "GB");
-      expect(result.blocked).toBe(true);
-      expect(result.blockedCountry).toBe("GB");
+      expect(result.locked).toBe(true);
+      expect(result.lockedCountry).toBe("GB");
       expect(result.purchaseCountry).toBe("NG");
     });
 
@@ -188,25 +188,25 @@ describe("PPP Config", () => {
 
     it("allows discounted purchase when current country is null", () => {
       const result = checkPppAccess(4999, true, "IN", null);
-      expect(result.blocked).toBe(false);
+      expect(result.locked).toBe(false);
     });
 
     // --- Return value shape ---
 
-    it("returns null fields when not blocked", () => {
+    it("returns null fields when not locked", () => {
       const result = checkPppAccess(4999, true, "US", "IN");
       expect(result).toEqual({
-        blocked: false,
-        blockedCountry: null,
+        locked: false,
+        lockedCountry: null,
         purchaseCountry: null,
       });
     });
 
-    it("returns country details when blocked", () => {
+    it("returns country details when locked", () => {
       const result = checkPppAccess(4999, true, "IN", "US");
       expect(result).toEqual({
-        blocked: true,
-        blockedCountry: "US",
+        locked: true,
+        lockedCountry: "US",
         purchaseCountry: "IN",
       });
     });

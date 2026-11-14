@@ -54,18 +54,18 @@ function findPurchase(userId: number, courseId: number) {
 export type Access = {
   userId: number | null;
   user: ReturnType<typeof getUserById>;
-  isAdmin: boolean;
-  /** The instructor who owns this specific course. */
+  isPlatformAdmin: boolean;
+  /** The Course owner: the instructor who owns this specific course. */
   isOwningInstructor: boolean;
-  /** Owning instructor or admin — the people who speak for the course. */
-  isStaff: boolean;
+  /** Course staff — the people who speak for the course. */
+  isCourseStaff: boolean;
   enrolled: boolean;
-  pppBlocked: boolean;
-  pppBlockedCountry: string | null;
+  countryLocked: boolean;
+  countryLockCountry: string | null;
   pppPurchaseCountry: string | null;
   /**
    * May they read the course's content (lesson bodies, comments)?
-   * Staff always can. Students need an enrollment that isn't PPP-blocked.
+   * Staff always can. Students need an Enrollment that isn't under a Country lock.
    */
   canViewContent: boolean;
 };
@@ -73,12 +73,12 @@ export type Access = {
 const SIGNED_OUT: Access = {
   userId: null,
   user: undefined,
-  isAdmin: false,
+  isPlatformAdmin: false,
   isOwningInstructor: false,
-  isStaff: false,
+  isCourseStaff: false,
   enrolled: false,
-  pppBlocked: false,
-  pppBlockedCountry: null,
+  countryLocked: false,
+  countryLockCountry: null,
   pppPurchaseCountry: null,
   canViewContent: false,
 };
@@ -94,19 +94,19 @@ export async function getAccess(
   if (!user) return SIGNED_OUT;
 
   const course = getCourseById(courseId);
-  const isAdmin = user.role === UserRole.Admin;
+  const isPlatformAdmin = user.role === UserRole.PlatformAdmin;
   const isOwningInstructor = course?.instructorId === userId;
-  const isStaff = isAdmin || isOwningInstructor;
+  const isCourseStaff = isPlatformAdmin || isOwningInstructor;
   const enrolled = isUserEnrolled(userId, courseId);
 
-  // PPP only restricts students who bought at a discount — staff are exempt.
+  // The Country lock only restricts Students who bought at a discount — Course staff are exempt.
   let ppp = {
-    blocked: false,
-    blockedCountry: null as string | null,
+    locked: false,
+    lockedCountry: null as string | null,
     purchaseCountry: null as string | null,
   };
 
-  if (enrolled && !isStaff && course) {
+  if (enrolled && !isCourseStaff && course) {
     const purchase = findPurchase(userId, courseId);
     const currentCountry = await resolveCountry(request);
     ppp = checkPppAccess(
@@ -120,14 +120,14 @@ export async function getAccess(
   return {
     userId,
     user,
-    isAdmin,
+    isPlatformAdmin,
     isOwningInstructor,
-    isStaff,
+    isCourseStaff,
     enrolled,
-    pppBlocked: ppp.blocked,
-    pppBlockedCountry: ppp.blockedCountry,
+    countryLocked: ppp.locked,
+    countryLockCountry: ppp.lockedCountry,
     pppPurchaseCountry: ppp.purchaseCountry,
-    canViewContent: isStaff || (enrolled && !ppp.blocked),
+    canViewContent: isCourseStaff || (enrolled && !ppp.locked),
   };
 }
 
@@ -164,9 +164,9 @@ export async function requireContentAccess(
 }
 
 /**
- * Throws unless the user is the course's own instructor, or an admin.
+ * Throws unless the user is Course staff: the Course owner or a Platform admin.
  */
-export async function requireStaff(
+export async function requireCourseStaff(
   request: Request,
   courseId: number
 ): Promise<Access> {
@@ -176,27 +176,27 @@ export async function requireStaff(
     throw data("Select a user from the DevUI panel.", { status: 401 });
   }
 
-  if (!access.isStaff) {
-    throw data("Only this course's instructor can do that.", { status: 403 });
+  if (!access.isCourseStaff) {
+    throw data("Only Course staff can do that.", { status: 403 });
   }
 
   return access;
 }
 
 /**
- * Throws unless the user is an instructor or an admin, without tying them to a
+ * Throws unless the user is an instructor or a Platform admin, without tying them to a
  * particular course — for pages that span all of someone's courses.
  */
-export async function requireInstructorOrAdmin(request: Request) {
+export async function requireInstructorOrPlatformAdmin(request: Request) {
   const userId = await requireUserId(request);
   const user = getUserById(userId);
 
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors can access this page.", { status: 403 });
   }
 
-  return { userId, user, isAdmin: user.role === UserRole.Admin };
+  return { userId, user, isPlatformAdmin: user.role === UserRole.PlatformAdmin };
 }

@@ -6,7 +6,7 @@
 // database or the request.
 
 /**
- * The platform's cut of gross revenue. One constant, named once — the page
+ * The Platform fee: the share of gross revenue Cadence keeps. One constant, named once — the page
  * shows gross, fee and net side by side, and they must agree.
  */
 export const PLATFORM_FEE_RATE = 0.2;
@@ -69,7 +69,7 @@ const MONTHS = [
 /**
  * Cents as money — always with the cents shown, and always with a currency
  * symbol. Deliberately not `formatPrice`, which renders 0 as "Free": a day
- * with no sales is $0.00, not free.
+ * with no Purchases is $0.00, not free.
  */
 export function formatMoney(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", {
@@ -97,7 +97,7 @@ export function formatBucket(bucket: string): string {
  * Net is gross minus the rounded fee rather than a second independent
  * rounding, so the three figures always add up on screen.
  */
-export function splitRevenue(grossCents: number) {
+export function splitGrossRevenue(grossCents: number) {
   const feeCents = Math.round(grossCents * PLATFORM_FEE_RATE);
   return { grossCents, feeCents, netCents: grossCents - feeCents };
 }

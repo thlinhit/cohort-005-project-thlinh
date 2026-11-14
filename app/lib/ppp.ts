@@ -32,7 +32,7 @@ export function getDiscountForCountry(countryCode: string | null): number {
   return PPP_TIERS[tier].discount;
 }
 
-export function calculatePppPrice(priceInCents: number, countryCode: string | null): number {
+export function calculateEffectivePrice(priceInCents: number, countryCode: string | null): number {
   const discount = getDiscountForCountry(countryCode);
   return Math.round(priceInCents * (1 - discount));
 }
@@ -44,16 +44,16 @@ export function getCountryTierInfo(countryCode: string | null) {
 }
 
 /**
- * Pure function to check if PPP access should be blocked.
- * Returns blocked=true when a discounted purchase is accessed from a different country.
+ * Pure function to check if PPP access should be locked.
+ * Returns locked=true when a discounted purchase is accessed from a different country.
  */
 export function checkPppAccess(
   coursePrice: number,
   coursePppEnabled: boolean,
   purchaseCountry: string | null,
   currentCountry: string | null
-): { blocked: boolean; blockedCountry: string | null; purchaseCountry: string | null } {
-  const result = { blocked: false, blockedCountry: null as string | null, purchaseCountry: null as string | null };
+): { locked: boolean; lockedCountry: string | null; purchaseCountry: string | null } {
+  const result = { locked: false, lockedCountry: null as string | null, purchaseCountry: null as string | null };
 
   // Skip: free courses or PPP-disabled courses
   if (coursePrice <= 0 || !coursePppEnabled) return result;
@@ -61,14 +61,14 @@ export function checkPppAccess(
   // Skip: no purchase country recorded
   if (!purchaseCountry) return result;
 
-  // Skip: full-price (Tier 1) purchases — no geographic restriction
+  // Skip: full-price (Tier 1) purchases — no Country lock
   const purchaseTier = getTierForCountry(purchaseCountry);
   if (purchaseTier === 1) return result;
 
   // Discounted purchase — verify country match
   if (currentCountry && currentCountry !== purchaseCountry) {
-    result.blocked = true;
-    result.blockedCountry = currentCountry;
+    result.locked = true;
+    result.lockedCountry = currentCountry;
     result.purchaseCountry = purchaseCountry;
   }
 

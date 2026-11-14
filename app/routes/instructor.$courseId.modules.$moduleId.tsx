@@ -116,7 +116,7 @@ function getModuleWithLessons(id: number) {
 export function meta({ loaderData }: Route.MetaArgs) {
   const moduleTitle = loaderData?.module?.title ?? "Module";
   const courseTitle = loaderData?.course?.title ?? "Course";
-  return [{ title: `Preview: ${moduleTitle} — ${courseTitle} — Cadence` }];
+  return [{ title: `Student view: ${moduleTitle} — ${courseTitle} — Cadence` }];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -132,7 +132,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can access this page.", {
       status: 403,
@@ -151,7 +151,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only view your own courses.", { status: 403 });
   }
 
@@ -218,7 +218,7 @@ export function HydrateFallback() {
   );
 }
 
-export default function InstructorModulePreview({
+export default function InstructorModuleOverview({
   loaderData,
 }: Route.ComponentProps) {
   const { course, module: mod, totalLessons, totalDuration } = loaderData;
@@ -241,7 +241,7 @@ export default function InstructorModulePreview({
         <Link to={`/courses/${course.slug}/${mod.id}`}>
           <Button variant="outline" size="sm">
             <ExternalLink className="mr-1 size-3.5" />
-            Student View
+            Student view
           </Button>
         </Link>
       </div>
@@ -333,7 +333,7 @@ export default function InstructorModulePreview({
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let title = "Something went wrong";
   let message =
-    "An unexpected error occurred while loading this module preview.";
+    "An unexpected error occurred while loading this module's student view.";
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
@@ -341,7 +341,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       message =
         typeof error.data === "string"
           ? error.data
-          : "You must be logged in to access this page.";
+          : "You must be signed in to access this page.";
     } else if (error.status === 403) {
       title = "Access denied";
       message =

@@ -287,7 +287,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const user = getUserById(currentUserId);
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can access this page.", {
       status: 403,
@@ -304,7 +304,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only edit your own courses.", { status: 403 });
   }
 
@@ -338,13 +338,13 @@ export async function action({ params, request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in.", { status: 401 });
+    throw data("You must be signed in.", { status: 401 });
   }
 
   const user = getUserById(currentUserId);
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can manage quizzes.", {
       status: 403,
@@ -356,7 +356,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const course = getCourseById(courseId);
   if (
     !course ||
-    (course.instructorId !== currentUserId && user.role !== UserRole.Admin)
+    (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Course not found or not yours.", { status: 403 });
   }
@@ -438,7 +438,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 const STEPS = [
   { label: "Settings", number: 1 },
   { label: "Questions", number: 2 },
-  { label: "Answers", number: 3 },
+  { label: "Quiz Answers", number: 3 },
   { label: "Review", number: 4 },
 ];
 
@@ -655,7 +655,7 @@ export default function QuizBuilderWizard({
             <h2 className="text-lg font-semibold">Questions</h2>
             <p className="text-sm text-muted-foreground">
               Add questions to your quiz. Drag to reorder. You&apos;ll set
-              answer options in the next step.
+              quiz answer options in the next step.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -761,7 +761,7 @@ export default function QuizBuilderWizard({
     );
   }
 
-  // ─── Step 3: Answers ───
+  // ─── Step 3: Quiz answers ───
   function addOption(questionId: string) {
     setWizard((prev) => ({
       ...prev,
@@ -831,9 +831,9 @@ export default function QuizBuilderWizard({
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <h2 className="text-lg font-semibold">Answer Options</h2>
+            <h2 className="text-lg font-semibold">Quiz Answer Options</h2>
             <p className="text-sm text-muted-foreground">
-              Set answer options for each question and mark the correct answer.
+              Set answer options for each quiz question and mark the correct answer.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -938,7 +938,7 @@ export default function QuizBuilderWizard({
         );
       if (!q.options.some((o) => o.isCorrect))
         validationErrors.push(
-          `Question ${wizard.questions.indexOf(q) + 1} has no correct answer.`
+          `Quiz question ${wizard.questions.indexOf(q) + 1} has no correct answer.`
         );
       for (const opt of q.options) {
         if (!opt.text.trim())
@@ -1174,7 +1174,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       title = "Not found";
       message = "The quiz, lesson, or course you're looking for doesn't exist.";
     } else if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

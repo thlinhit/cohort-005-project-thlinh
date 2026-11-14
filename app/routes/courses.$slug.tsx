@@ -15,7 +15,7 @@ import {
   lessonProgress,
   courseRatings,
   purchases,
-  coupons,
+  seats,
   refunds,
   videoWatchEvents,
   LessonProgressStatus,
@@ -50,7 +50,7 @@ import { formatDuration, formatPrice } from "~/lib/utils";
 import { renderMarkdown } from "~/lib/markdown.server";
 import { resolveCountry } from "~/lib/country.server";
 import {
-  calculatePppPrice,
+  calculateEffectivePrice,
   getCountryTierInfo,
   getDiscountForCountry,
 } from "~/lib/ppp";
@@ -441,10 +441,10 @@ function asDayString(when: Date) {
 }
 
 /**
- * What the learner is offered if they want their money back, or null if this
- * purchase cannot be cancelled.
+ * What the student is offered if they want a refund, or null if this
+ * purchase cannot be refunded.
  */
-function getCancellationOffer(
+function getRefundEligibility(
   userId: number,
   course: { id: number; price: number }
 ) {
@@ -477,10 +477,10 @@ function getCancellationOffer(
   }
 
   const claimedSeat = db
-    .select({ id: coupons.id })
-    .from(coupons)
+    .select({ id: seats.id })
+    .from(seats)
     .where(
-      and(eq(coupons.purchaseId, purchase.id), isNotNull(coupons.redeemedAt))
+      and(eq(seats.purchaseId, purchase.id), isNotNull(seats.claimedAt))
     )
     .get();
 
@@ -526,13 +526,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   let progress = 0;
   let lessonProgressMap: Record<number, string> = {};
   let nextLessonId: number | null = null;
-  let cancellation: { amount: number; lastDayInWindow: string } | null = null;
+  let refundEligibility: { amount: number; lastDayInWindow: string } | null = null;
 
   if (currentUserId) {
     enrolled = isUserEnrolled(currentUserId, course.id);
 
     if (enrolled) {
-      cancellation = getCancellationOffer(currentUserId, {
+      refundEligibility = getRefundEligibility(currentUserId, {
         id: course.id,
         price: courseWithDetails.price,
       });
@@ -561,8 +561,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     : null;
 
   const country = await resolveCountry(request);
-  const pppPrice = courseWithDetails.pppEnabled
-    ? calculatePppPrice(courseWithDetails.price, country)
+  const effectivePrice = courseWithDetails.pppEnabled
+    ? calculateEffectivePrice(courseWithDetails.price, country)
     : courseWithDetails.price;
   const tierInfo = getCountryTierInfo(country);
 
@@ -575,11 +575,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     lessonProgressMap,
     nextLessonId,
     currentUserId,
-    pppPrice,
+    effectivePrice,
     tierInfo,
     ratingSummary,
     userRating,
-    cancellation,
+    refundEligibility,
   };
 }
 
@@ -589,7 +589,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in to rate a course.", { status: 401 });
+    throw data("You must be signed in to rate a course.", { status: 401 });
   }
 
   const course = getCourseBySlug(params.slug);
@@ -676,11 +676,11 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     lessonProgressMap,
     nextLessonId,
     currentUserId,
-    pppPrice,
+    effectivePrice,
     tierInfo,
     ratingSummary,
     userRating,
-    cancellation,
+    refundEligibility,
   } = loaderData;
   const isInstructor = currentUserId === course.instructorId;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -704,16 +704,16 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     0
   );
 
-  const pppPriceLabel = formatPrice(pppPrice);
-  const isDiscounted = pppPrice < course.price;
+  const effectivePriceLabel = formatPrice(effectivePrice);
+  const isDiscounted = effectivePrice < course.price;
 
   const selfPurchaseLink = currentUserId
     ? `/courses/${course.slug}/purchase`
-    : `/signup?redirectTo=${encodeURIComponent(`/courses/${course.slug}/purchase`)}`;
+    : `/sign-up?redirectTo=${encodeURIComponent(`/courses/${course.slug}/purchase`)}`;
 
   const teamPurchaseLink = currentUserId
     ? `/courses/${course.slug}/purchase?mode=team`
-    : `/signup?redirectTo=${encodeURIComponent(`/courses/${course.slug}/purchase?mode=team`)}`;
+    : `/sign-up?redirectTo=${encodeURIComponent(`/courses/${course.slug}/purchase?mode=team`)}`;
 
   const priceDisplay = (
     <div className="mb-3 text-center">
@@ -722,13 +722,13 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
           <div className="text-sm text-muted-foreground line-through">
             {formatPrice(course.price)}
           </div>
-          <div className="text-2xl font-bold">{pppPriceLabel}</div>
+          <div className="text-2xl font-bold">{effectivePriceLabel}</div>
           <div className="mt-1 inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-300">
             {tierInfo.label} — PPP discount
           </div>
         </>
       ) : (
-        <div className="text-2xl font-bold">{pppPriceLabel}</div>
+        <div className="text-2xl font-bold">{effectivePriceLabel}</div>
       )}
     </div>
   );
@@ -748,7 +748,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
           {priceDisplay}
           <Link to={selfPurchaseLink}>
             <Button size="lg" className="w-full">
-              Enroll Now — {pppPriceLabel}
+              Enroll Now — {effectivePriceLabel}
             </Button>
           </Link>
         </TabsContent>
@@ -831,7 +831,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
 
       {/* Two-column: sales copy left, sidebar right */}
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Left column: sales copy + course content */}
+        {/* Left column: sales copy + curriculum */}
         <div className="lg:col-span-2">
           <div
             className="prose prose-neutral dark:prose-invert max-w-none"
@@ -852,7 +852,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
           )}
 
           <div className="mt-8">
-            <CourseContent
+            <Curriculum
               course={course}
               enrolled={enrolled}
               isInstructor={isInstructor}
@@ -916,10 +916,10 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
                     </Button>
                   </Link>
                   <RateCourse userRating={userRating} />
-                  {cancellation && (
-                    <CancelPurchase
+                  {refundEligibility && (
+                    <RequestRefund
                       slug={course.slug}
-                      amount={cancellation.amount}
+                      amount={refundEligibility.amount}
                     />
                   )}
                 </>
@@ -993,7 +993,7 @@ function RateCourse({ userRating }: { userRating: number | null }) {
   );
 }
 
-function CancelPurchase({ slug, amount }: { slug: string; amount: number }) {
+function RequestRefund({ slug, amount }: { slug: string; amount: number }) {
   const fetcher = useFetcher<{ errors?: Record<string, string> }>();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const isSubmitting = fetcher.state !== "idle";
@@ -1014,7 +1014,7 @@ function CancelPurchase({ slug, amount }: { slug: string; amount: number }) {
           className="w-full text-muted-foreground"
           onClick={() => setIsFormOpen(true)}
         >
-          Cancel my purchase
+          Request a refund
         </Button>
       </div>
     );
@@ -1022,7 +1022,7 @@ function CancelPurchase({ slug, amount }: { slug: string; amount: number }) {
 
   return (
     <div className="border-t pt-4">
-      <p className="mb-2 text-sm font-medium">Cancel my purchase</p>
+      <p className="mb-2 text-sm font-medium">Request a refund</p>
       <p className="mb-3 text-xs text-muted-foreground">
         We will send {formatPrice(amount)} back to the card you paid with, once
         someone has read your note.
@@ -1040,7 +1040,7 @@ function CancelPurchase({ slug, amount }: { slug: string; amount: number }) {
         />
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={isSubmitting}>
-            {isSubmitting ? "Sending..." : "Cancel my purchase"}
+            {isSubmitting ? "Sending..." : "Request a refund"}
           </Button>
           <Button
             type="button"
@@ -1056,7 +1056,7 @@ function CancelPurchase({ slug, amount }: { slug: string; amount: number }) {
   );
 }
 
-function CourseContent({
+function Curriculum({
   course,
   enrolled,
   isInstructor,
@@ -1081,10 +1081,10 @@ function CourseContent({
 }) {
   return (
     <div>
-      <h2 className="mb-4 text-2xl font-bold">Course Content</h2>
+      <h2 className="mb-4 text-2xl font-bold">Curriculum</h2>
       {course.modules.length === 0 ? (
         <p className="text-muted-foreground">
-          No content has been added to this course yet.
+          No curriculum has been added to this course yet.
         </p>
       ) : (
         <div className="space-y-4">
@@ -1204,7 +1204,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       message =
         "The course you're looking for doesn't exist or may have been removed.";
     } else if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

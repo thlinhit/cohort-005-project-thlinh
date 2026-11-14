@@ -87,7 +87,7 @@ type CommentAuthor = {
   name: string;
   avatarUrl: string | null;
   isInstructor: boolean;
-  isAdmin: boolean;
+  isPlatformAdmin: boolean;
 };
 
 type ThreadComment = {
@@ -376,7 +376,7 @@ function getLessonThread(lessonId: number): ThreadComment[] {
         name: row.authorName,
         avatarUrl: row.authorAvatarUrl,
         isInstructor: row.authorId === course.instructorId,
-        isAdmin: row.authorRole === UserRole.Admin,
+        isPlatformAdmin: row.authorRole === UserRole.PlatformAdmin,
       },
       replies: [],
     };
@@ -456,12 +456,12 @@ function updateComment(commentId: number, userId: number, body: string) {
     .get();
 }
 
-function deleteComment(commentId: number, userId: number, isStaff: boolean) {
+function deleteComment(commentId: number, userId: number, isCourseStaff: boolean) {
   const existing = getCommentById(commentId);
   if (!existing) {
     throw new Error("Comment not found");
   }
-  if (existing.userId !== userId && !isStaff) {
+  if (existing.userId !== userId && !isCourseStaff) {
     throw new Error("You can only delete your own comments");
   }
   if (existing.deletedAt !== null) {
@@ -762,7 +762,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   // PPP Access Guard — resolved by getAccess, which treats a blocked user as
   // having no access to the course's content at all.
-  const { pppBlocked, pppBlockedCountry, pppPurchaseCountry, canViewContent } =
+  const { countryLocked, countryLockCountry, pppPurchaseCountry, canViewContent } =
     access;
 
   // Comments are confidential to the course: only people who can read the
@@ -773,8 +773,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     : [];
 
   // Render lesson content from Markdown to HTML server-side
-  const contentHtml = lesson.content
-    ? await renderMarkdown(lesson.content)
+  const bodyHtml = lesson.body
+    ? await renderMarkdown(lesson.body)
     : null;
 
   // Build prev/next navigation
@@ -803,7 +803,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   if (quizRecord) {
     const quizData = getQuizWithQuestions(quizRecord.id);
     if (quizData) {
-      // Strip isCorrect from options so answers aren't leaked to the client
+      // Strip isCorrect from options so quiz answers aren't leaked to the client
       quiz = {
         id: quizData.id,
         title: quizData.title,
@@ -848,7 +848,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       title: mod.title,
     },
     lesson,
-    contentHtml,
+    bodyHtml,
     lessonStatus,
     enrolled,
     currentUserId,
@@ -859,12 +859,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     lastWatchPosition,
     watchProgress,
     lessonProgressMap,
-    pppBlocked,
-    pppBlockedCountry,
+    countryLocked,
+    countryLockCountry,
     pppPurchaseCountry,
     comments,
     canViewContent,
-    canModerate: access.isStaff,
+    canModerate: access.isCourseStaff,
     instructorName: instructor?.name ?? "your instructor",
   };
 }
@@ -879,7 +879,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   const currentUserId = await getCurrentUserId(request);
   if (!currentUserId) {
-    throw data("You must be logged in", { status: 401 });
+    throw data("You must be signed in", { status: 401 });
   }
 
   const formData = await request.formData();
@@ -932,7 +932,7 @@ export async function action({ params, request }: Route.ActionArgs) {
       if (!existing || existing.lessonId !== lessonId) {
         throw data("Comment not found", { status: 404 });
       }
-      deleteComment(parsed.data.commentId, currentUserId, access.isStaff);
+      deleteComment(parsed.data.commentId, currentUserId, access.isCourseStaff);
       return { ok: true };
     } catch (error) {
       // Service validation failures are user-correctable; anything thrown as a
@@ -1012,7 +1012,7 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     curriculum,
     module: mod,
     lesson,
-    contentHtml,
+    bodyHtml,
     lessonStatus,
     enrolled,
     currentUserId,
@@ -1023,8 +1023,8 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     lastWatchPosition,
     watchProgress,
     lessonProgressMap,
-    pppBlocked,
-    pppBlockedCountry,
+    countryLocked,
+    countryLockCountry,
     pppPurchaseCountry,
     comments,
     canViewContent,
@@ -1055,14 +1055,14 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
   const quizResult = quizFetcher.data?.quizResult ?? null;
   const isSubmittingQuiz = quizFetcher.state !== "idle";
 
-  if (pppBlocked) {
+  if (countryLocked) {
     const purchaseCountryName = pppPurchaseCountry
       ? (COUNTRIES.find((c) => c.code === pppPurchaseCountry)?.name ??
         pppPurchaseCountry)
       : "your original country";
-    const currentCountryName = pppBlockedCountry
-      ? (COUNTRIES.find((c) => c.code === pppBlockedCountry)?.name ??
-        pppBlockedCountry)
+    const currentCountryName = countryLockCountry
+      ? (COUNTRIES.find((c) => c.code === countryLockCountry)?.name ??
+        countryLockCountry)
       : "a different country";
 
     return (
@@ -1167,18 +1167,18 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
             />
           )}
 
-          {/* Lesson Content */}
-          {contentHtml && (
+          {/* Lesson body */}
+          {bodyHtml && (
             <div
               className="prose prose-neutral dark:prose-invert mb-8 max-w-none"
-              dangerouslySetInnerHTML={{ __html: contentHtml }}
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
             />
           )}
 
-          {!contentHtml && !lesson.videoUrl && (
+          {!bodyHtml && !lesson.videoUrl && (
             <Card className="mb-8">
               <CardContent className="py-12 text-center text-muted-foreground">
-                No content has been added to this lesson yet.
+                No lesson body has been added to this lesson yet.
               </CardContent>
             </Card>
           )}
@@ -1683,7 +1683,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       message =
         "The lesson you're looking for doesn't exist or may have been removed.";
     } else if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

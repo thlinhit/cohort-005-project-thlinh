@@ -8,7 +8,7 @@ import {
   formatMoney,
   rangeStart,
   parseAnalyticsRange,
-  splitRevenue,
+  splitGrossRevenue,
 } from "./analytics";
 
 describe("analytics config", () => {
@@ -53,7 +53,7 @@ describe("analytics config", () => {
 
   describe("splitRevenue", () => {
     it("splits a round amount into fee and net", () => {
-      expect(splitRevenue(10000)).toEqual({
+      expect(splitGrossRevenue(10000)).toEqual({
         grossCents: 10000,
         feeCents: 2000,
         netCents: 8000,
@@ -64,13 +64,13 @@ describe("analytics config", () => {
       // Half a cent each way — the amounts where rounding both figures
       // independently leaves the page a cent short.
       for (const gross of [1, 3, 7, 3333, 99_999]) {
-        const { feeCents, netCents } = splitRevenue(gross);
+        const { feeCents, netCents } = splitGrossRevenue(gross);
         expect(feeCents + netCents).toBe(gross);
       }
     });
 
     it("splits zero into zeroes", () => {
-      expect(splitRevenue(0)).toEqual({
+      expect(splitGrossRevenue(0)).toEqual({
         grossCents: 0,
         feeCents: 0,
         netCents: 0,
