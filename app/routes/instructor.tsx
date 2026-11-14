@@ -285,7 +285,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

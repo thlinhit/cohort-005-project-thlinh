@@ -183,13 +183,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             ) : (
               <>
                 <Link
-                  to="/login"
+                  to="/sign-in"
                   className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  Log In
+                  Sign In
                 </Link>
                 <Button asChild size="sm">
-                  <Link to="/signup">Sign Up</Link>
+                  <Link to="/sign-up">Sign Up</Link>
                 </Button>
               </>
             )}

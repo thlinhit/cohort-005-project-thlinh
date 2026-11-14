@@ -14,10 +14,10 @@ import {
   enrollments,
   purchases,
   teams,
-  teamMembers,
-  coupons,
+  teamAdmins,
+  seats,
   CourseStatus,
-  TeamMemberRole,
+  TeamAdminRole,
 } from "~/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
 import crypto from "crypto";
@@ -36,7 +36,7 @@ import { UserAvatar } from "~/components/user-avatar";
 import { data } from "react-router";
 import { formatDuration, formatPrice } from "~/lib/utils";
 import { resolveCountry } from "~/lib/country.server";
-import { calculatePppPrice, getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
+import { calculateEffectivePrice, getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { parseFormData, parseParams } from "~/lib/validation";
 
 function getCourseBySlug(slug: string) {
@@ -191,20 +191,20 @@ function createPurchase(
 }
 
 function getTeamForAdmin(userId: number) {
-  const membership = db
+  const teamAdmin = db
     .select()
-    .from(teamMembers)
+    .from(teamAdmins)
     .where(
       and(
-        eq(teamMembers.userId, userId),
-        eq(teamMembers.role, TeamMemberRole.Admin)
+        eq(teamAdmins.userId, userId),
+        eq(teamAdmins.role, TeamAdminRole.TeamAdmin)
       )
     )
     .get();
 
-  if (!membership) return undefined;
+  if (!teamAdmin) return undefined;
 
-  return db.select().from(teams).where(eq(teams.id, membership.teamId)).get();
+  return db.select().from(teams).where(eq(teams.id, teamAdmin.teamId)).get();
 }
 
 function getOrCreateTeamForUser(userId: number) {
@@ -212,23 +212,23 @@ function getOrCreateTeamForUser(userId: number) {
   if (existingTeam) return existingTeam;
 
   const team = db.insert(teams).values({}).returning().get();
-  db.insert(teamMembers)
-    .values({ teamId: team.id, userId, role: TeamMemberRole.Admin })
+  db.insert(teamAdmins)
+    .values({ teamId: team.id, userId, role: TeamAdminRole.TeamAdmin })
     .returning()
     .get();
   return team;
 }
 
-function generateCoupons(
+function generateSeats(
   teamId: number,
   courseId: number,
   purchaseId: number,
   quantity: number
 ) {
-  const created: (typeof coupons.$inferSelect)[] = [];
+  const created: (typeof seats.$inferSelect)[] = [];
   for (let i = 0; i < quantity; i++) {
-    const coupon = db
-      .insert(coupons)
+    const seat = db
+      .insert(seats)
       .values({
         teamId,
         courseId,
@@ -237,7 +237,7 @@ function generateCoupons(
       })
       .returning()
       .get();
-    created.push(coupon);
+    created.push(seat);
   }
   return created;
 }
@@ -251,8 +251,8 @@ function createTeamPurchase(
 ) {
   const purchase = createPurchase(userId, courseId, amountPaid, country);
   const team = getOrCreateTeamForUser(userId);
-  const teamCoupons = generateCoupons(team.id, courseId, purchase.id, quantity);
-  return { purchase, team, coupons: teamCoupons };
+  const teamSeats = generateSeats(team.id, courseId, purchase.id, quantity);
+  return { purchase, team, seats: teamSeats };
 }
 
 const purchaseParamsSchema = z.object({
@@ -290,7 +290,7 @@ export async function loader({ params, request, url }: Route.LoaderArgs) {
   const currentUserId = await getCurrentUserId(request);
   if (!currentUserId) {
     throw redirect(
-      `/signup?redirectTo=${encodeURIComponent(`/courses/${slug}/purchase`)}`
+      `/sign-up?redirectTo=${encodeURIComponent(`/courses/${slug}/purchase`)}`
     );
   }
 
@@ -317,8 +317,8 @@ export async function loader({ params, request, url }: Route.LoaderArgs) {
   );
 
   const country = await resolveCountry(request);
-  const pppPrice = courseWithDetails.pppEnabled
-    ? calculatePppPrice(courseWithDetails.price, country)
+  const effectivePrice = courseWithDetails.pppEnabled
+    ? calculateEffectivePrice(courseWithDetails.price, country)
     : courseWithDetails.price;
   const tierInfo = getCountryTierInfo(country);
   const countryName = country
@@ -330,7 +330,7 @@ export async function loader({ params, request, url }: Route.LoaderArgs) {
     lessonCount,
     enrollmentCount,
     totalDuration,
-    pppPrice,
+    effectivePrice,
     tierInfo,
     country,
     countryName,
@@ -348,7 +348,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   const currentUserId = await getCurrentUserId(request);
   if (!currentUserId) {
-    throw data("You must be logged in.", { status: 401 });
+    throw data("You must be signed in.", { status: 401 });
   }
 
   const formData = await request.formData();
@@ -359,22 +359,22 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   const country = await resolveCountry(request);
-  const pppPrice = course.pppEnabled
-    ? calculatePppPrice(course.price, country)
+  const effectivePrice = course.pppEnabled
+    ? calculateEffectivePrice(course.price, country)
     : course.price;
 
   if (parsed.data.intent === "confirm-purchase") {
     if (isUserEnrolled(currentUserId, course.id)) {
       throw redirect(`/courses/${slug}`);
     }
-    createPurchase(currentUserId, course.id, pppPrice, country);
+    createPurchase(currentUserId, course.id, effectivePrice, country);
     enrollUser(currentUserId, course.id, false, false);
     throw redirect(`/courses/${slug}/welcome`);
   }
 
   // Team purchase — user does NOT get enrolled themselves
   const { quantity } = parsed.data;
-  const totalPrice = pppPrice * quantity;
+  const totalPrice = effectivePrice * quantity;
   createTeamPurchase(currentUserId, course.id, totalPrice, country, quantity);
   throw redirect(`/team`);
 }
@@ -387,7 +387,7 @@ export default function PurchaseConfirmation({
     lessonCount,
     enrollmentCount,
     totalDuration,
-    pppPrice,
+    effectivePrice,
     tierInfo,
     countryName,
     isEnrolled,
@@ -405,8 +405,8 @@ export default function PurchaseConfirmation({
     }
   }, [fetcher.state, fetcher.data]);
 
-  const isDiscounted = pppPrice < course.price;
-  const teamTotal = pppPrice * quantity;
+  const isDiscounted = effectivePrice < course.price;
+  const teamTotal = effectivePrice * quantity;
 
   return (
     <div className="mx-auto max-w-3xl p-6 lg:p-8">
@@ -511,16 +511,16 @@ export default function PurchaseConfirmation({
                               Your price
                             </span>
                             <div className="text-3xl font-bold">
-                              {formatPrice(pppPrice)}
+                              {formatPrice(effectivePrice)}
                             </div>
                           </>
                         ) : (
                           <>
                             <span className="text-sm text-muted-foreground">
-                              Total
+                              Effective price
                             </span>
                             <div className="text-3xl font-bold">
-                              {formatPrice(pppPrice)}
+                              {formatPrice(effectivePrice)}
                             </div>
                           </>
                         )}
@@ -579,7 +579,7 @@ export default function PurchaseConfirmation({
                     {/* Price breakdown */}
                     <div>
                       <div className="text-sm text-muted-foreground">
-                        {formatPrice(pppPrice)} &times; {quantity}{" "}
+                        {formatPrice(effectivePrice)} &times; {quantity}{" "}
                         {quantity === 1 ? "seat" : "seats"}
                       </div>
                       <div className="text-3xl font-bold">
@@ -588,8 +588,7 @@ export default function PurchaseConfirmation({
                     </div>
 
                     <p className="text-sm text-muted-foreground">
-                      You&apos;ll receive {quantity} unique coupon{" "}
-                      {quantity === 1 ? "link" : "links"} to share with your
+                      You&apos;ll receive {quantity} unique Seat {quantity === 1 ? "link" : "links"} to share with your
                       team members. Each link grants one person access to this
                       course.
                     </p>

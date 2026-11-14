@@ -1,7 +1,7 @@
 import { Link, isRouteErrorResponse, useSearchParams } from "react-router";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type { Route } from "./+types/instructor.analytics";
-import { requireInstructorOrAdmin } from "~/lib/access.server";
+import { requireInstructorOrPlatformAdmin } from "~/lib/access.server";
 import {
   and,
   count,
@@ -26,7 +26,7 @@ import {
   comments,
   courseRatings,
   courses,
-  coupons,
+  seats,
   enrollments,
   lessonProgress,
   lessons,
@@ -36,7 +36,7 @@ import {
   quizzes,
   users,
 } from "~/db/schema";
-import { splitRevenue, type AnalyticsRange } from "~/lib/analytics";
+import { splitGrossRevenue, type AnalyticsRange } from "~/lib/analytics";
 import { getDiscountForCountry } from "~/lib/ppp";
 import {
   ANALYTICS_RANGES,
@@ -69,7 +69,7 @@ import { AlertTriangle, Rocket } from "lucide-react";
 // ─── Instructor Analytics ───
 // What an instructor earned, and when. Three money figures rather than one:
 // a lone number here gets read as "what I get paid", and the platform's 20%
-// cut makes that reading wrong.
+// platform fee makes that reading wrong.
 //
 // All page state — tab, range, instructor, course — lives in search params, so
 // a view can be linked to and reloaded. The loader reads them; the controls
@@ -89,7 +89,7 @@ const chartConfig = {
 export function meta() {
   return [
     { title: "Analytics — Cadence" },
-    { name: "description", content: "Revenue and earnings for your courses." },
+    { name: "description", content: "Gross revenue and net earnings for your courses." },
   ];
 }
 
@@ -99,38 +99,38 @@ function parseId(value: string | null): number | null {
   return value !== null && Number.isInteger(id) && id > 0 ? id : null;
 }
 
-type RevenueSummary = {
+type GrossRevenueSummary = {
   grossCents: number;
   feeCents: number;
   netCents: number;
   purchaseCount: number;
 };
 
-type RevenuePoint = {
+type GrossRevenuePoint = {
   bucket: string;
   grossCents: number;
   netCents: number;
 };
 
-type RevenueSeries = {
+type GrossRevenueSeries = {
   granularity: "day" | "month";
-  points: RevenuePoint[];
+  points: GrossRevenuePoint[];
 };
 
-type StudentRevenue = {
+type StudentGrossRevenue = {
   userId: number;
   name: string;
-  revenueCents: number;
+  amountPaidCents: number;
 };
 
 type TopBuyer = {
   userId: number;
   name: string;
   email: string;
-  spendCents: number;
+  amountPaidCents: number;
   purchaseCount: number;
   seatsBought: number;
-  seatsUnredeemed: number;
+  seatsUnclaimed: number;
   enrolled: boolean;
 };
 
@@ -143,20 +143,20 @@ type CourseProgressSummary = {
   enrolledCount: number;
   totalLessons: number;
   averageProgressPercent: number | null;
-  finishedCount: number;
+  completedCount: number;
 };
 
 type FunnelLesson = {
   lessonId: number;
   title: string;
-  reachedCount: number;
+  gotAsFarCount: number;
   dropFromPrevious: number;
 };
 
 type FunnelModule = {
   moduleId: number;
   title: string;
-  reachedCount: number;
+  gotAsFarCount: number;
   dropWithin: number;
   lessons: FunnelLesson[];
 };
@@ -178,7 +178,7 @@ type QuizPassRate = {
   averageBestScorePercent: number | null;
 };
 
-type CountryRevenueRow = {
+type CountryGrossRevenueRow = {
   country: string | null;
   purchaseCount: number;
   grossCents: number;
@@ -188,14 +188,14 @@ type CountryRevenueRow = {
   discountPercent: number | null;
 };
 
-type CourseCountryRevenue = {
+type CourseCountryGrossRevenue = {
   grossCents: number;
   netCents: number;
   purchaseCount: number;
   discountedGrossCents: number;
   discountedNetCents: number;
   discountedSharePercent: number;
-  rows: CountryRevenueRow[];
+  rows: CountryGrossRevenueRow[];
 };
 
 function scopeOn(
@@ -232,10 +232,10 @@ function ownedBy(instructorId: number | null) {
     : eq(courses.instructorId, instructorId);
 }
 
-function getStudentRevenue(
+function getStudentGrossRevenue(
   instructorId: number | null,
   range: AnalyticsRange
-): StudentRevenue[] {
+): StudentGrossRevenue[] {
   const students = db
     .selectDistinct({ userId: users.id, name: users.name })
     .from(enrollments)
@@ -252,8 +252,8 @@ function getStudentRevenue(
   // Correlated: did this purchase mint seats for other people?
   const mintedSeats = db
     .select({ one: sql`1` })
-    .from(coupons)
-    .where(eq(coupons.purchaseId, purchases.id));
+    .from(seats)
+    .where(eq(seats.purchaseId, purchases.id));
 
   const direct = db
     .select({ userId: purchases.userId, paid: sum(purchases.amountPaid) })
@@ -270,26 +270,26 @@ function getStudentRevenue(
     .all();
 
   const seatCounts = db
-    .select({ purchaseId: coupons.purchaseId, seats: count().as("seats") })
-    .from(coupons)
-    .groupBy(coupons.purchaseId)
+    .select({ purchaseId: seats.purchaseId, seats: count().as("seats") })
+    .from(seats)
+    .groupBy(seats.purchaseId)
     .as("seat_counts");
 
   const viaSeat = db
     .select({
-      userId: coupons.redeemedByUserId,
+      userId: seats.claimedByUserId,
       // Divided rather than rounded per row: the shares are summed first and
       // rounded once, so five seats out of 3333 cents still add up.
       paid: sql<number>`sum(${purchases.amountPaid} * 1.0 / ${seatCounts.seats})`,
     })
-    .from(coupons)
-    .innerJoin(purchases, eq(coupons.purchaseId, purchases.id))
+    .from(seats)
+    .innerJoin(purchases, eq(seats.purchaseId, purchases.id))
     .innerJoin(courses, eq(purchases.courseId, courses.id))
-    .innerJoin(seatCounts, eq(seatCounts.purchaseId, coupons.purchaseId))
+    .innerJoin(seatCounts, eq(seatCounts.purchaseId, seats.purchaseId))
     .where(
-      and(inArray(coupons.redeemedByUserId, studentIds), ownedBy(instructorId))
+      and(inArray(seats.claimedByUserId, studentIds), ownedBy(instructorId))
     )
-    .groupBy(coupons.redeemedByUserId)
+    .groupBy(seats.claimedByUserId)
     .all();
 
   const paidByUser = new Map<number, number>();
@@ -303,7 +303,7 @@ function getStudentRevenue(
 
   return students.map((student) => ({
     ...student,
-    revenueCents: Math.round(paidByUser.get(student.userId) ?? 0),
+    amountPaidCents: Math.round(paidByUser.get(student.userId) ?? 0),
   }));
 }
 
@@ -318,7 +318,7 @@ function getTopBuyers(
       userId: users.id,
       name: users.name,
       email: users.email,
-      spend: sum(purchases.amountPaid),
+      amountPaid: sum(purchases.amountPaid),
       purchaseCount: count(purchases.id),
     })
     .from(purchases)
@@ -334,17 +334,17 @@ function getTopBuyers(
 
   const buyerIds = buyers.map((buyer) => buyer.userId);
 
-  // Seats are counted in their own query: joining coupons to purchases above
-  // would repeat each purchase once per seat and multiply the spend the
+  // Seats are counted in their own query: joining seats to purchases above
+  // would repeat each purchase once per seat and multiply the amount paid the
   // leaderboard ranks on.
-  const seats = db
+  const seatTotals = db
     .select({
       userId: purchases.userId,
-      bought: count(coupons.id),
-      unredeemed: sql<number>`sum(case when ${coupons.redeemedByUserId} is null then 1 else 0 end)`,
+      bought: count(seats.id),
+      unclaimed: sql<number>`sum(case when ${seats.claimedByUserId} is null then 1 else 0 end)`,
     })
-    .from(coupons)
-    .innerJoin(purchases, eq(coupons.purchaseId, purchases.id))
+    .from(seats)
+    .innerJoin(purchases, eq(seats.purchaseId, purchases.id))
     .innerJoin(courses, eq(purchases.courseId, courses.id))
     .where(
       and(
@@ -355,7 +355,7 @@ function getTopBuyers(
     .groupBy(purchases.userId)
     .all();
 
-  const seatsByUser = new Map(seats.map((row) => [row.userId, row]));
+  const seatsByUser = new Map(seatTotals.map((row) => [row.userId, row]));
 
   // No range here: "never enrolled" is a fact about the person, not about the
   // last thirty days.
@@ -373,10 +373,10 @@ function getTopBuyers(
     userId: buyer.userId,
     name: buyer.name,
     email: buyer.email,
-    spendCents: Number(buyer.spend ?? 0),
+    amountPaidCents: Number(buyer.amountPaid ?? 0),
     purchaseCount: buyer.purchaseCount,
     seatsBought: seatsByUser.get(buyer.userId)?.bought ?? 0,
-    seatsUnredeemed: Number(seatsByUser.get(buyer.userId)?.unredeemed ?? 0),
+    seatsUnclaimed: Number(seatsByUser.get(buyer.userId)?.unclaimed ?? 0),
     enrolled: enrolled.has(buyer.userId),
   }));
 }
@@ -430,10 +430,10 @@ function bucketRange(
   return buckets;
 }
 
-function getRevenueOverTime(
+function getGrossRevenueOverTime(
   instructorId: number | null,
   range: AnalyticsRange
-): RevenueSeries {
+): GrossRevenueSeries {
   const granularity = range === "all" ? "month" : "day";
   const bucketExpr = sql<string>`substr(${purchases.createdAt}, 1, ${
     granularity === "day" ? 10 : 7
@@ -464,7 +464,7 @@ function getRevenueOverTime(
     bucketOf(now, granularity),
     granularity
   ).map((bucket) => {
-    const { grossCents, netCents } = splitRevenue(
+    const { grossCents, netCents } = splitGrossRevenue(
       grossByBucket.get(bucket) ?? 0
     );
     return { bucket, grossCents, netCents };
@@ -517,7 +517,7 @@ function getCourseProgressSummary(courseId: number): CourseProgressSummary {
       enrolledCount: perStudent.length,
       totalLessons,
       averageProgressPercent: null,
-      finishedCount: 0,
+      completedCount: 0,
     };
   }
 
@@ -530,14 +530,14 @@ function getCourseProgressSummary(courseId: number): CourseProgressSummary {
     enrolledCount: perStudent.length,
     totalLessons,
     averageProgressPercent: Math.round(totalPercent / perStudent.length),
-    finishedCount: perStudent.filter(
+    completedCount: perStudent.filter(
       (student) => student.completed >= totalLessons
     ).length,
   };
 }
 
-/** A lesson a student has opened counts as reached; one they haven't doesn't. */
-const REACHED_STATUSES = [
+/** A lesson a student has opened counts as one they got as far as; one they haven't doesn't. */
+const GOT_AS_FAR_STATUSES = [
   LessonProgressStatus.InProgress,
   LessonProgressStatus.Completed,
 ];
@@ -570,7 +570,7 @@ function getCourseDropOff(courseId: number): CourseFunnel {
     curriculum.map((row, position) => [row.lessonId, position])
   );
 
-  // Enrolment is joined rather than filtered afterwards, so somebody working
+  // Enrollment is joined rather than filtered afterwards, so somebody working
   // through a course they never enrolled in cannot inflate a bar past the
   // denominator underneath it.
   const touched = db
@@ -589,7 +589,7 @@ function getCourseDropOff(courseId: number): CourseFunnel {
     .where(
       and(
         inArray(lessonProgress.lessonId, courseLessonIds(courseId)),
-        inArray(lessonProgress.status, REACHED_STATUSES)
+        inArray(lessonProgress.status, GOT_AS_FAR_STATUSES)
       )
     )
     .all();
@@ -604,40 +604,40 @@ function getCourseDropOff(courseId: number): CourseFunnel {
     );
   }
 
-  // Counted backwards from the end: everyone who stopped at a later lesson
+  // Counted backwards from the end: everyone who dropped off at a later lesson
   // passed through this one, which is the whole definition of the bar.
-  const stoppedAt = curriculum.map(() => 0);
-  for (const position of furthest.values()) stoppedAt[position] += 1;
+  const droppedOffAt = curriculum.map(() => 0);
+  for (const position of furthest.values()) droppedOffAt[position] += 1;
 
-  const reachedAt: number[] = [];
+  const gotAsFarAt: number[] = [];
   let running = 0;
   for (let position = curriculum.length - 1; position >= 0; position--) {
-    running += stoppedAt[position];
-    reachedAt[position] = running;
+    running += droppedOffAt[position];
+    gotAsFarAt[position] = running;
   }
 
   const grouped: FunnelModule[] = [];
-  let previousReached = enrolledCount;
+  let previousGotAsFar = enrolledCount;
 
   curriculum.forEach((row, position) => {
-    const reachedCount = reachedAt[position];
+    const gotAsFarCount = gotAsFarAt[position];
     const lesson: FunnelLesson = {
       lessonId: row.lessonId,
       title: row.lessonTitle,
-      reachedCount,
-      dropFromPrevious: previousReached - reachedCount,
+      gotAsFarCount,
+      dropFromPrevious: previousGotAsFar - gotAsFarCount,
     };
-    previousReached = reachedCount;
+    previousGotAsFar = gotAsFarCount;
 
     const current = grouped.at(-1);
     if (current?.moduleId === row.moduleId) {
       current.lessons.push(lesson);
-      current.dropWithin = current.reachedCount - reachedCount;
+      current.dropWithin = current.gotAsFarCount - gotAsFarCount;
     } else {
       grouped.push({
         moduleId: row.moduleId,
         title: row.moduleTitle,
-        reachedCount,
+        gotAsFarCount,
         dropWithin: 0,
         lessons: [lesson],
       });
@@ -729,10 +729,10 @@ function getCourseQuizPassRates(
   });
 }
 
-function getCourseRevenueByCountry(
+function getCourseGrossRevenueByCountry(
   courseId: number,
   range: AnalyticsRange
-): CourseCountryRevenue {
+): CourseCountryGrossRevenue {
   const rows = db
     .select({
       country: purchases.country,
@@ -776,7 +776,7 @@ function getCourseRevenueByCountry(
 
     return {
       ...row,
-      netCents: splitRevenue(row.grossCents).netCents,
+      netCents: splitGrossRevenue(row.grossCents).netCents,
       sharePercent: share(row.grossCents),
       averagePaidCents: Math.round(row.grossCents / row.purchaseCount),
       discountPercent,
@@ -785,30 +785,30 @@ function getCourseRevenueByCountry(
 
   return {
     grossCents,
-    netCents: splitRevenue(grossCents).netCents,
+    netCents: splitGrossRevenue(grossCents).netCents,
     purchaseCount,
     discountedGrossCents,
-    discountedNetCents: splitRevenue(discountedGrossCents).netCents,
+    discountedNetCents: splitGrossRevenue(discountedGrossCents).netCents,
     discountedSharePercent: share(discountedGrossCents),
     rows: breakdown,
   };
 }
 
 export async function loader({ request, url }: Route.LoaderArgs) {
-  const { userId, isAdmin } = await requireInstructorOrAdmin(request);
+  const { userId, isPlatformAdmin } = await requireInstructorOrPlatformAdmin(request);
 
   const range = parseAnalyticsRange(url.searchParams.get("range"));
   const tab: AnalyticsTab =
     url.searchParams.get("tab") === "course" ? "course" : "overview";
 
-  // Instructors are pinned to their own figures; only an admin may look
+  // Instructors are pinned to their own figures; only a Platform admin may look
   // elsewhere, and null means "every instructor".
-  const instructorId = isAdmin
+  const instructorId = isPlatformAdmin
     ? parseId(url.searchParams.get("instructor"))
     : userId;
 
   // The selector lists every course the viewer owns rather than only the ones
-  // that sold: a course nobody is finishing is exactly what this tab is for.
+  // that sold: a course nobody is completing is exactly what this tab is for.
   const courseOptions = db
     .select({ courseId: courses.id, title: courses.title })
     .from(courses)
@@ -826,15 +826,15 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     : null;
 
   // Unanswered questions. A question qualifies when it is top-level, not
-  // deleted, not written by staff, and has no reply from the course's
-  // instructor or an admin.
+  // deleted, not written by course staff, and has no reply from the course's
+  // instructor or a Platform admin.
   const questionsSince = rangeStart(range);
   const questionAuthor = alias(users, "author");
   const reply = alias(comments, "reply");
   const replyAuthor = alias(users, "reply_author");
 
-  // Correlated: matches a live reply, by staff, to the outer question.
-  const staffReply = db
+  // Correlated: matches a live reply, by course staff, to the outer question.
+  const courseStaffReply = db
     .select({ one: sql`1` })
     .from(reply)
     .innerJoin(replyAuthor, eq(replyAuthor.id, reply.userId))
@@ -843,7 +843,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
         eq(reply.parentId, comments.id),
         isNull(reply.deletedAt),
         or(
-          eq(replyAuthor.role, UserRole.Admin),
+          eq(replyAuthor.role, UserRole.PlatformAdmin),
           eq(reply.userId, courses.instructorId)
         )
       )
@@ -852,10 +852,10 @@ export async function loader({ request, url }: Route.LoaderArgs) {
   const questionConditions = [
     isNull(comments.parentId),
     isNull(comments.deletedAt),
-    // Staff asking their own question shouldn't queue up as work for themselves.
-    ne(questionAuthor.role, UserRole.Admin),
+    // Course staff asking their own question shouldn't queue up as work for themselves.
+    ne(questionAuthor.role, UserRole.PlatformAdmin),
     ne(comments.userId, courses.instructorId),
-    notExists(staffReply),
+    notExists(courseStaffReply),
   ];
 
   if (instructorId !== null) {
@@ -897,14 +897,14 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     .get();
 
   // sum() returns null over an empty set, and a string when SQLite has rows.
-  const summary: RevenueSummary = {
-    ...splitRevenue(Number(summaryRow?.gross ?? 0)),
+  const summary: GrossRevenueSummary = {
+    ...splitGrossRevenue(Number(summaryRow?.gross ?? 0)),
     purchaseCount: summaryRow?.purchaseCount ?? 0,
   };
 
-  // Revenue broken down by course, biggest earner first. Courses with no sales
+  // Gross revenue broken down by course, biggest earner first. Courses with no purchases
   // in the range are absent rather than listed at zero.
-  const courseRevenueRows = db
+  const courseGrossRevenueRows = db
     .select({
       courseId: courses.id,
       title: courses.title,
@@ -917,18 +917,18 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     .groupBy(courses.id)
     .all();
 
-  const courseRevenue = courseRevenueRows
+  const courseGrossRevenue = courseGrossRevenueRows
     .map((row) => ({
       courseId: row.courseId,
       title: row.title,
-      ...splitRevenue(Number(row.gross ?? 0)),
+      ...splitGrossRevenue(Number(row.gross ?? 0)),
       purchaseCount: row.purchaseCount,
     }))
     .sort((a, b) => b.grossCents - a.grossCents);
 
   // How many people paid, and how many are learning. Deliberately two numbers:
   // one team purchase is a single buyer covering several seats, and someone who
-  // redeems a seat enrols without a purchase row of their own.
+  // claims a seat enrolls without a purchase row of their own.
   const buyerCountRow = db
     .select({ buyerCount: countDistinct(purchases.userId) })
     .from(purchases)
@@ -936,25 +936,25 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     .where(purchaseScope(instructorId, range))
     .get();
 
-  const students = getStudentRevenue(instructorId, range);
-  const attributedRevenue = students.reduce(
-    (total, student) => total + student.revenueCents,
+  const students = getStudentGrossRevenue(instructorId, range);
+  const attributedGrossRevenue = students.reduce(
+    (total, student) => total + student.amountPaidCents,
     0
   );
 
   const audience = {
     buyerCount: buyerCountRow?.buyerCount ?? 0,
     studentCount: students.length,
-    revenuePerStudentCents:
+    grossRevenuePerStudentCents:
       students.length === 0
         ? null
-        : Math.round(attributedRevenue / students.length),
+        : Math.round(attributedGrossRevenue / students.length),
   };
 
-  // Everyone who owns at least one course, for the admin's instructor picker.
+  // Everyone who owns at least one course, for the Platform admin's instructor picker.
   // Owners rather than users with the instructor role: an admin who owns a
   // course contributes to the platform-wide total.
-  const instructors = isAdmin
+  const instructors = isPlatformAdmin
     ? db
         .selectDistinct({ id: users.id, name: users.name })
         .from(courses)
@@ -989,12 +989,12 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     ratings: getRatingSummary(instructorId, range),
     tab,
     range,
-    isAdmin,
+    isPlatformAdmin,
     instructorId,
     selectedCourseId,
     summary,
-    series: getRevenueOverTime(instructorId, range),
-    courses: courseRevenue,
+    series: getGrossRevenueOverTime(instructorId, range),
+    courses: courseGrossRevenue,
     courseOptions,
     // Progress and drop-off carry no usable timestamp, so they span all time
     // whatever the range control says — and the tab says so on screen.
@@ -1013,9 +1013,9 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     countries:
       selectedCourseId === null
         ? null
-        : getCourseRevenueByCountry(selectedCourseId, range),
+        : getCourseGrossRevenueByCountry(selectedCourseId, range),
     instructors,
-    unpublished: instructorId !== null && publishedRow === undefined,
+    hasNoPublishedCourse: instructorId !== null && publishedRow === undefined,
   };
 }
 
@@ -1114,7 +1114,7 @@ function TopBuyers({
           <th className="pb-2 font-medium">Buyer</th>
           <th className="pb-2 font-medium">Seats</th>
           <th className="pb-2 text-right font-medium">Purchases</th>
-          <th className="pb-2 text-right font-medium">Total spend</th>
+          <th className="pb-2 text-right font-medium">Amount paid</th>
         </tr>
       </thead>
       <tbody>
@@ -1132,11 +1132,11 @@ function TopBuyers({
                   </span>{" "}
                   <span className="text-xs text-muted-foreground">
                     bought {buyer.seatsBought},{" "}
-                    {buyer.seatsUnredeemed > 0 ? (
+                    {buyer.seatsUnclaimed > 0 ? (
                       // The prompt to chase: seats paid for that nobody is
                       // using are the most actionable thing on this table.
                       <span className="font-medium text-foreground">
-                        {buyer.seatsUnredeemed} unused
+                        {buyer.seatsUnclaimed} unclaimed
                       </span>
                     ) : (
                       "all claimed"
@@ -1144,7 +1144,7 @@ function TopBuyers({
                   </span>
                 </div>
               )}
-              {/* Said of team buyers too, not just solo ones: the manager who
+              {/* Said of team buyers too, not just solo ones: the team admin who
                   bought a dozen seats and never opened the course is the very
                   person this table exists to surface. */}
               <div className="text-xs text-muted-foreground">
@@ -1155,7 +1155,7 @@ function TopBuyers({
               {buyer.purchaseCount}
             </td>
             <td className="py-3 text-right font-medium tabular-nums">
-              {formatMoney(buyer.spendCents)}
+              {formatMoney(buyer.amountPaidCents)}
             </td>
           </tr>
         ))}
@@ -1164,7 +1164,7 @@ function TopBuyers({
   );
 }
 
-function RevenueChart({ series }: { series: RevenueSeries }) {
+function GrossRevenueChart({ series }: { series: GrossRevenueSeries }) {
   return (
     <ChartContainer config={chartConfig} className="h-64 w-full">
       <AreaChart data={series.points} margin={{ left: 12, right: 12 }}>
@@ -1253,10 +1253,10 @@ function CourseProgress({ progress }: { progress: CourseProgressSummary }) {
       <Card>
         <CardContent className="p-6">
           <div className="text-sm font-medium text-muted-foreground">
-            Students finished <span className="font-normal">· all time</span>
+            Course completions <span className="font-normal">· all time</span>
           </div>
           <div className="mt-2 text-3xl font-bold">
-            {progress.finishedCount}
+            {progress.completedCount}
           </div>
           {/* A count, and deliberately not a third percentage: several
               defensible completion rates exist, they disagree, and naming one
@@ -1280,7 +1280,7 @@ function FunnelRow({
   enrolledCount: number;
 }) {
   const share =
-    enrolledCount === 0 ? 0 : (lesson.reachedCount / enrolledCount) * 100;
+    enrolledCount === 0 ? 0 : (lesson.gotAsFarCount / enrolledCount) * 100;
 
   return (
     <div className="flex items-center gap-3 py-1.5 text-sm">
@@ -1297,7 +1297,7 @@ function FunnelRow({
         />
       </div>
       <div className="w-10 shrink-0 text-right font-medium tabular-nums">
-        {lesson.reachedCount}
+        {lesson.gotAsFarCount}
       </div>
       {/* The drop is spelled out beside each bar so the worst lesson can be
           found by reading rather than by comparing bar lengths by eye. */}
@@ -1332,7 +1332,7 @@ function DropOffFunnel({ funnel }: { funnel: CourseFunnel }) {
           <div className="flex items-baseline justify-between gap-4 border-b pb-1">
             <h3 className="text-sm font-semibold">{module.title}</h3>
             <p className="text-xs text-muted-foreground tabular-nums">
-              {module.reachedCount} of {funnel.enrolledCount} reached
+              {module.gotAsFarCount} of {funnel.enrolledCount} got as far as this
               {module.dropWithin > 0 && `, ${module.dropWithin} lost inside`}
             </p>
           </div>
@@ -1421,12 +1421,12 @@ function QuizPassRates({ quizzes }: { quizzes: QuizPassRate[] }) {
   );
 }
 
-/** Where a course's buyers are, and what parity pricing costs the seller. */
-function RevenueByCountry({ breakdown }: { breakdown: CourseCountryRevenue }) {
+/** Where a course's buyers are, and what PPP discounts cost the instructor. */
+function GrossRevenueByCountry({ breakdown }: { breakdown: CourseCountryGrossRevenue }) {
   if (breakdown.rows.length === 0) {
     return (
       <p className="py-12 text-center text-sm text-muted-foreground">
-        This course has no sales in this period, so there is nowhere to break
+        This course has no purchases in this period, so there is nowhere to break
         down yet.
       </p>
     );
@@ -1435,20 +1435,20 @@ function RevenueByCountry({ breakdown }: { breakdown: CourseCountryRevenue }) {
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
-        {/* The headline the panel exists for: parity discounting is otherwise
+        {/* The headline the panel exists for: PPP discounting is otherwise
             invisible, though it directly sets what the instructor earns — so
             the figure is stated in net, the money they actually keep. */}
         {formatMoney(breakdown.discountedNetCents)} of your{" "}
         {formatMoney(breakdown.netCents)} net earnings (
-        {breakdown.discountedSharePercent}%) came from countries with a parity
-        discount. Averages are what a sale there actually fetched — list prices
+        {breakdown.discountedSharePercent}%) came from countries with a PPP
+        discount. Averages are what a purchase there actually fetched — list prices
         change and are not kept, so no discount is reconstructed per purchase.
       </p>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             <th className="pb-2 font-medium">Country</th>
-            <th className="pb-2 text-right font-medium">Sales</th>
+            <th className="pb-2 text-right font-medium">Purchases</th>
             <th className="pb-2 text-right font-medium">Average paid</th>
             <th className="pb-2 text-right font-medium">Gross</th>
             <th className="pb-2 text-right font-medium">Net</th>
@@ -1505,7 +1505,7 @@ export default function InstructorAnalytics({
   const {
     tab,
     range,
-    isAdmin,
+    isPlatformAdmin,
     instructorId,
     selectedCourseId,
     summary,
@@ -1517,7 +1517,7 @@ export default function InstructorAnalytics({
     quizzes,
     countries,
     instructors,
-    unpublished,
+    hasNoPublishedCourse,
     audience,
     buyers,
     questions,
@@ -1540,9 +1540,9 @@ export default function InstructorAnalytics({
   const selectedCourse =
     courseOptions.find((course) => course.courseId === selectedCourseId) ??
     null;
-  // The revenue table narrows to the selected course. One with no sales in the
+  // The revenue table narrows to the selected course. One with no purchases in the
   // range has no row at all, and the panel says so rather than sitting empty.
-  const revenueRows = selectedCourse
+  const grossRevenueRows = selectedCourse
     ? courses.filter((course) => course.courseId === selectedCourseId)
     : courses;
 
@@ -1552,14 +1552,14 @@ export default function InstructorAnalytics({
         <div>
           <h1 className="text-3xl font-bold">Analytics</h1>
           <p className="mt-1 text-muted-foreground">
-            {isAdmin && instructorId === null
-              ? "Revenue across every instructor on the platform."
-              : "Revenue and earnings for your courses."}
+            {isPlatformAdmin && instructorId === null
+              ? "Gross revenue across every instructor on the platform."
+              : "Gross revenue and net earnings for your courses."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {isAdmin && (
+          {isPlatformAdmin && (
             <Select
               value={instructorId === null ? "all" : String(instructorId)}
               onValueChange={(value) =>
@@ -1609,7 +1609,7 @@ export default function InstructorAnalytics({
         </div>
       </div>
 
-      {unpublished ? (
+      {hasNoPublishedCourse ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Rocket className="mx-auto mb-4 size-12 text-muted-foreground" />
@@ -1642,7 +1642,7 @@ export default function InstructorAnalytics({
               <MoneyCard
                 label={`Platform fee (${PLATFORM_FEE_PERCENT}%)`}
                 amountCents={summary.feeCents}
-                hint="Cadence's cut. Already deducted from your earnings."
+                hint="Cadence's platform fee. Already deducted from your earnings."
               />
               <MoneyCard
                 label="Your net earnings"
@@ -1662,12 +1662,12 @@ export default function InstructorAnalytics({
               <StatCard
                 label="Enrolled students"
                 value={audience.studentCount}
-                hint={`Learners with access, seats included.${
-                  audience.revenuePerStudentCents === null
+                hint={`Students with access, seats included.${
+                  audience.grossRevenuePerStudentCents === null
                     ? ""
                     : ` ${formatMoney(
-                        audience.revenuePerStudentCents
-                      )} of revenue each.`
+                        audience.grossRevenuePerStudentCents
+                      )} of gross revenue each.`
                 }`}
                 emptyHint="Nobody has enrolled in this period."
               />
@@ -1692,7 +1692,7 @@ export default function InstructorAnalytics({
                       to="/instructor/questions"
                       className="mt-3 inline-block text-xs font-medium text-primary hover:underline"
                     >
-                      Answer them
+                      Reply to them
                     </Link>
                   ) : null
                 }
@@ -1710,18 +1710,18 @@ export default function InstructorAnalytics({
             <Card>
               <CardContent className="p-6">
                 <h2 className="mb-4 text-lg font-semibold">
-                  Revenue over time
+                  Gross revenue and net earnings over time
                 </h2>
-                {/* Keyed on the sales themselves, not on the points: a fixed
+                {/* Keyed on the purchases themselves, not on the points: a fixed
                     range always spans its whole window, so an instructor with
-                    no sales would otherwise get a flat line along zero rather
+                    no purchases would otherwise get a flat line along zero rather
                     than being told there is nothing there. */}
                 {summary.purchaseCount === 0 ? (
                   <p className="py-12 text-center text-sm text-muted-foreground">
-                    No sales in this period yet.
+                    No purchases in this period yet.
                   </p>
                 ) : (
-                  <RevenueChart series={series} />
+                  <GrossRevenueChart series={series} />
                 )}
               </CardContent>
             </Card>
@@ -1730,7 +1730,7 @@ export default function InstructorAnalytics({
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold">Top buyers</h2>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Your ten biggest spenders in this period — the people worth
+                  Your ten biggest buyers in this period — the people worth
                   reaching out to.
                 </p>
                 <TopBuyers buyers={buyers} />
@@ -1787,7 +1787,7 @@ export default function InstructorAnalytics({
                         got at least as far as each lesson, all time. The bars
                         only descend, so the biggest gap is where students quit
                         — the figure beside a lesson counts the ones who never
-                        reached it, having stopped on the lesson above.
+                        got as far as it, having dropped off on the lesson above.
                       </p>
                       <DropOffFunnel funnel={funnel} />
                     </CardContent>
@@ -1807,7 +1807,7 @@ export default function InstructorAnalytics({
               </Card>
             )}
 
-            {/* Both panels sit outside the enrolment gate above: a quiz with
+            {/* Both panels sit outside the enrollment gate above: a quiz with
                 nobody enrolled to sit it, and money arriving before anybody
                 claims their seat, are things an instructor should still be
                 told about rather than shown one "nobody is enrolled" card in
@@ -1830,24 +1830,24 @@ export default function InstructorAnalytics({
             {countries && (
               <Card>
                 <CardContent className="p-6">
-                  <h2 className="text-lg font-semibold">Revenue by country</h2>
-                  <RevenueByCountry breakdown={countries} />
+                  <h2 className="text-lg font-semibold">Gross revenue by country</h2>
+                  <GrossRevenueByCountry breakdown={countries} />
                 </CardContent>
               </Card>
             )}
 
             <Card>
               <CardContent className="p-6">
-                {revenueRows.length === 0 ? (
+                {grossRevenueRows.length === 0 ? (
                   <p className="py-12 text-center text-sm text-muted-foreground">
-                    No sales in this period yet.
+                    No purchases in this period yet.
                   </p>
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 font-medium">Course</th>
-                        <th className="pb-2 text-right font-medium">Sales</th>
+                        <th className="pb-2 text-right font-medium">Purchases</th>
                         <th className="pb-2 text-right font-medium">Gross</th>
                         <th className="pb-2 text-right font-medium">
                           Fee ({PLATFORM_FEE_PERCENT}%)
@@ -1856,7 +1856,7 @@ export default function InstructorAnalytics({
                       </tr>
                     </thead>
                     <tbody>
-                      {revenueRows.map((course) => (
+                      {grossRevenueRows.map((course) => (
                         <tr key={course.courseId} className="border-b">
                           <td className="py-3 font-medium">{course.title}</td>
                           <td className="py-3 text-right tabular-nums">
@@ -1912,7 +1912,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

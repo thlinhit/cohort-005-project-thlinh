@@ -113,7 +113,7 @@ export async function action({ request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in to create a course.", { status: 401 });
+    throw data("You must be signed in to create a course.", { status: 401 });
   }
 
   const user = getUserById(currentUserId);
@@ -244,7 +244,7 @@ export default function InstructorNewCourse({
 
             {/* Sales Copy */}
             <div className="space-y-2">
-              <Label htmlFor="salesCopy">Sales Copy</Label>
+              <Label htmlFor="salesCopy">Sales copy</Label>
               <Textarea
                 id="salesCopy"
                 name="salesCopy"
@@ -328,7 +328,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

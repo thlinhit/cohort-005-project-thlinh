@@ -283,7 +283,7 @@ function createLesson(
     .values({
       moduleId,
       title,
-      content,
+      body: content,
       videoUrl,
       position: pos,
       durationMinutes,
@@ -563,7 +563,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can access this page.", {
       status: 403,
@@ -581,7 +581,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only edit your own courses.", { status: 403 });
   }
 
@@ -646,13 +646,13 @@ export async function action({ params, request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in.", { status: 401 });
+    throw data("You must be signed in.", { status: 401 });
   }
 
   const user = getUserById(currentUserId);
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can edit courses.", {
       status: 403,
@@ -666,7 +666,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only edit your own courses.", { status: 403 });
   }
 
@@ -1700,7 +1700,7 @@ export default function InstructorCourseEditor({
         <TabsList>
           <TabsTrigger value="content">
             <BookOpen className="size-4" />
-            Content
+            Curriculum
           </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="size-4" />
@@ -1716,7 +1716,7 @@ export default function InstructorCourseEditor({
           </TabsTrigger>
         </TabsList>
 
-        {/* Content Tab */}
+        {/* Curriculum Tab */}
         <TabsContent value="content" className="mt-6">
           {course.modules.length === 0 ? (
             <Card>
@@ -2227,7 +2227,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       message =
         "The course you're looking for doesn't exist or may have been removed.";
     } else if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data

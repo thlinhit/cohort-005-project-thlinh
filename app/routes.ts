@@ -45,12 +45,18 @@ export default [
     route("admin/categories", "routes/admin.categories.tsx"),
     route("settings", "routes/settings.tsx"),
     route("team", "routes/team.tsx"),
-    route("redeem/:code", "routes/redeem.$code.tsx"),
+    route("claim/:code", "routes/claim.$code.tsx"),
   ]),
-  route("signup", "routes/signup.tsx"),
-  route("login", "routes/login.tsx"),
+  route("sign-up", "routes/sign-up.tsx"),
+  route("sign-in", "routes/sign-in.tsx"),
+  // Permanent redirects for links already shared with people. Must never be removed (ADR 0001).
+  route("signup", "routes/legacy.signup.ts"),
+  route("login", "routes/legacy.login.ts"),
+  route("redeem/:code", "routes/legacy.redeem.$code.ts"),
   route("api/switch-user", "routes/api.switch-user.ts"),
-  route("api/logout", "routes/api.logout.ts"),
+  route("api/sign-out", "routes/api.sign-out.ts"),
+  // POSTed to by existing clients. A second route to the same file, kept without a redirect.
+  route("api/logout", "routes/api.sign-out.ts", { id: "api-logout" }),
   route("api/video-tracking", "routes/api.video-tracking.ts"),
   route("api/set-dev-country", "routes/api.set-dev-country.ts"),
 ] satisfies RouteConfig;

@@ -111,7 +111,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can access this page.", {
       status: 403,
@@ -129,7 +129,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only edit your own courses.", { status: 403 });
   }
 
@@ -157,13 +157,13 @@ export async function action({ params, request }: Route.ActionArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("You must be logged in.", { status: 401 });
+    throw data("You must be signed in.", { status: 401 });
   }
 
   const user = getUserById(currentUserId);
   if (
     !user ||
-    (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)
+    (user.role !== UserRole.Instructor && user.role !== UserRole.PlatformAdmin)
   ) {
     throw data("Only instructors and admins can edit lessons.", {
       status: 403,
@@ -180,7 +180,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
+  if (course.instructorId !== currentUserId && user.role !== UserRole.PlatformAdmin) {
     throw data("You can only edit your own courses.", { status: 403 });
   }
 
@@ -243,7 +243,7 @@ export default function InstructorLessonEditor({
   const { course, lesson, module: mod, quiz } = loaderData;
   const fetcher = useFetcher();
 
-  const [content, setContent] = useState(lesson.content ?? "");
+  const [content, setContent] = useState(lesson.body ?? "");
   const [videoUrl, setVideoUrl] = useState(lesson.videoUrl ?? "");
   const [durationMinutes, setDurationMinutes] = useState(
     lesson.durationMinutes?.toString() ?? ""
@@ -253,7 +253,7 @@ export default function InstructorLessonEditor({
   );
 
   const hasChanges =
-    content !== (lesson.content ?? "") ||
+    content !== (lesson.body ?? "") ||
     videoUrl !== (lesson.videoUrl ?? "") ||
     durationMinutes !== (lesson.durationMinutes?.toString() ?? "") ||
     githubRepoUrl !== (lesson.githubRepoUrl ?? "");
@@ -356,9 +356,9 @@ export default function InstructorLessonEditor({
         {/* Content */}
         <Card>
           <CardHeader>
-            <h2 className="text-lg font-semibold">Lesson Content</h2>
+            <h2 className="text-lg font-semibold">Lesson body</h2>
             <p className="text-sm text-muted-foreground">
-              Write lesson content in Markdown. Press Ctrl+S to format and save.
+              Write the lesson body in Markdown. Press Ctrl+S to format and save.
             </p>
           </CardHeader>
           <CardContent>
@@ -488,7 +488,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       message =
         "The lesson you're looking for doesn't exist or may have been removed.";
     } else if (error.status === 401) {
-      title = "Sign in required";
+      title = "Sign In Required";
       message =
         typeof error.data === "string"
           ? error.data
